@@ -359,14 +359,19 @@ socket.on('rooms_list', (list) => {
 
 socket.on('game_update', async (v) => {
   const prev = view;
-  view = v;
 
-  if (v.lastResult === 'trick_over' && v.state?.lastTrickWinner !== undefined) {
+  if ((v.lastResult === 'trick_over' || v.lastResult === 'round_over') && v.state?.lastTrick?.length) {
+    // show the completed trick with all cards visible for 2.5 seconds
+    view = v;
+    view.state.currentTrick = v.state.lastTrick; // pin all cards on table
+    renderGame();
     const winner = v.players[v.state.lastTrickWinner];
     flash(`${winner ? winner.name : '?'} wins the trick!`);
-    await sleep(1100);
+    await sleep(2500);
+    view.state.currentTrick = []; // now clear
   }
 
+  view = v;
   renderGame();
 
   if (v.state && v.phase === 'bid' && v.state.currentTurnIdx === v.myIdx) {
