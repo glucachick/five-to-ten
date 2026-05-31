@@ -43,6 +43,23 @@
   .player-list li .dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
   .player-list li .dot.off { background: #6b7280; }
   .host-badge { font-size: 10px; background: var(--gold-dark); color: #1a1a1a; padding: 1px 6px; border-radius: 3px; margin-left: auto; }
+  .bot-badge { font-size: 10px; background: #2a5a8a; color: #c8e0f0; padding: 1px 6px; border-radius: 3px; margin-left: auto; }
+  .bot-controls { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0; }
+  .bot-controls span { font-size: 13px; color: #8aad8a; }
+  .btn-bot { background: linear-gradient(135deg, #2a5a8a, #1a3a5a); color: #c8e0f0; border: none; padding: 6px 16px; font-size: 13px; font-family: 'Georgia', serif; border-radius: 5px; cursor: pointer; transition: all 0.15s; }
+  .btn-bot:hover { transform: translateY(-1px); background: linear-gradient(135deg, #3a6a9a, #2a4a6a); }
+  .btn-bot:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+  /* OPEN ROOMS LIST */
+  .open-rooms { margin-top: 18px; }
+  .open-rooms h3 { color: var(--gold); font-size: 14px; letter-spacing: 1px; margin-bottom: 8px; text-align: center; }
+  .rooms-list { list-style: none; max-height: 160px; overflow-y: auto; }
+  .rooms-list li { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid rgba(201,168,76,0.12); font-size: 13px; gap: 8px; }
+  .rooms-list li:hover { background: rgba(201,168,76,0.06); }
+  .room-entry-name { color: #f0e6c8; } .room-entry-info { color: #8aad8a; font-size: 11px; }
+  .btn-quick-join { background: var(--gold-dark); color: #1a1a1a; border: none; padding: 4px 12px; font-size: 12px; font-family: 'Georgia', serif; font-weight: bold; border-radius: 4px; cursor: pointer; }
+  .btn-quick-join:hover { background: var(--gold); }
+  .no-rooms { color: #8aad8a; font-size: 12px; text-align: center; padding: 10px; font-style: italic; }
 
   /* GAME LAYOUT */
   #screen-game { padding: 0; justify-content: flex-start; align-items: stretch; background: radial-gradient(ellipse at center, var(--felt) 30%, var(--felt-dark) 100%); }
@@ -177,6 +194,10 @@
       <button class="btn btn-sec" onclick="doJoin()">JOIN ROOM</button>
     </div>
     <div class="err" id="title-err"></div>
+    <div class="open-rooms">
+      <h3>OPEN GAMES</h3>
+      <ul class="rooms-list" id="rooms-list"><li class="no-rooms">No open games right now.</li></ul>
+    </div>
   </div>
 </div>
 
@@ -188,6 +209,11 @@
     <div class="room-code-display" id="lobby-code">——</div>
     <div class="lobby-hint">2–5 players. Host starts the game.</div>
     <ul class="player-list" id="lobby-players"></ul>
+    <div class="bot-controls" id="bot-controls" style="display:none">
+      <button class="btn-bot" id="btn-remove-bot" onclick="doRemoveBot()" disabled>− Remove Bot</button>
+      <span id="bot-count-lbl">0 bots</span>
+      <button class="btn-bot" id="btn-add-bot" onclick="doAddBot()">+ Add Bot</button>
+    </div>
     <div class="wait-msg" id="lobby-wait">Waiting for players...</div>
     <div style="text-align:center;margin-top:16px">
       <button class="btn" id="btn-start" onclick="doStart()" style="display:none">START GAME</button>
@@ -317,6 +343,20 @@ socket.on('room_update', (v) => {
   if (v.phase === 'lobby') renderLobby();
 });
 
+socket.on('rooms_list', (list) => {
+  const ul = $('rooms-list');
+  if (!ul) return;
+  if (!list.length) { ul.innerHTML = '<li class="no-rooms">No open games right now.</li>'; return; }
+  ul.innerHTML = list.map(r => `
+    <li>
+      <div>
+        <div class="room-entry-name">${r.host}'s game</div>
+        <div class="room-entry-info">${r.playerCount} player${r.playerCount!==1?'s':''}${r.botCount?' + '+r.botCount+' bot'+( r.botCount!==1?'s':''):''} · Code: ${r.code}</div>
+      </div>
+      <button class="btn-quick-join" onclick="quickJoin('${r.code}')">JOIN</button>
+    </li>`).join('');
+});
+
 socket.on('game_update', async (v) => {
   const prev = view;
   view = v;
@@ -369,19 +409,42 @@ function doJoin() {
 
 function doStart() { socket.emit('start_game', { code: roomCode }); }
 function doLeave() { location.reload(); }
+function doAddBot() { socket.emit('add_bot', { code: roomCode }); }
+function doRemoveBot() { socket.emit('remove_bot', { code: roomCode }); }
+function quickJoin(code) { $('inp-code').value = code; doJoin(); }
 
 function renderLobby() {
   $('lobby-code').textContent = roomCode;
   const list = $('lobby-players');
   list.innerHTML = '';
   isHost = view.players.length > 0 && view.players[0].id === socket.id;
+  const botCount = view.players.filter(p => p.isBot).length;
+  const humanCount = view.players.filter(p => !p.isBot).length;
+
   view.players.forEach((p, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="dot${p.connected ? '' : ' off'}"></span>${p.name}${i===0 ? '<span class="host-badge">HOST</span>' : ''}`;
+    if (p.isBot) {
+      li.innerHTML = `<span class="dot" style="background:#4a8abf"></span>${p.name}<span class="bot-badge">BOT</span>`;
+    } else {
+      li.innerHTML = `<span class="dot${p.connected ? '' : ' off'}"></span>${p.name}${i===0 ? '<span class="host-badge">HOST</span>' : ''}`;
+    }
     list.appendChild(li);
   });
+
+  // bot controls (host only)
+  const botControls = $('bot-controls');
+  botControls.style.display = isHost ? 'flex' : 'none';
+  if (isHost) {
+    $('btn-add-bot').disabled = view.players.length >= 5;
+    $('btn-remove-bot').disabled = botCount === 0;
+    $('bot-count-lbl').textContent = `${botCount} bot${botCount !== 1 ? 's' : ''}`;
+  }
+
   $('btn-start').style.display = isHost && view.players.length >= 2 ? 'inline-block' : 'none';
-  $('lobby-wait').textContent = view.players.length < 2 ? 'Waiting for at least one more player...' : `${view.players.length} players ready.`;
+  const total = view.players.length;
+  $('lobby-wait').textContent = total < 2
+    ? 'Add bots or wait for friends to join...'
+    : `${humanCount} human${humanCount!==1?'s':''} + ${botCount} bot${botCount!==1?'s':''} ready.`;
 }
 
 // ── GAME RENDER ───────────────────────────────────────────
