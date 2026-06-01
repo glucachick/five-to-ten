@@ -159,6 +159,20 @@
   .dbw { font-size: 10px; color: #8aad8a; }
   .crown { font-size: 13px; display: block; }
 
+  /* CARD FLIGHT ANIMATIONS */
+  @keyframes fly-from-bottom { from { transform: translateY(160px) scale(0.7); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+  @keyframes fly-from-top    { from { transform: translateY(-160px) scale(0.7); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+  @keyframes fly-from-left   { from { transform: translateX(-180px) scale(0.7); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+  @keyframes fly-from-right  { from { transform: translateX(180px) scale(0.7); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+  @keyframes fly-from-top-left  { from { transform: translate(-130px,-130px) scale(0.7); opacity: 0; } to { transform: translate(0,0) scale(1); opacity: 1; } }
+  @keyframes fly-from-top-right { from { transform: translate(130px,-130px) scale(0.7); opacity: 0; } to { transform: translate(0,0) scale(1); opacity: 1; } }
+  .fly-bottom    { animation: fly-from-bottom    0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
+  .fly-top       { animation: fly-from-top       0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
+  .fly-left      { animation: fly-from-left      0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
+  .fly-right     { animation: fly-from-right     0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
+  .fly-top-left  { animation: fly-from-top-left  0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
+  .fly-top-right { animation: fly-from-top-right 0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
+
   /* TRICK FLASH */
   #trick-flash { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.88); border: 2px solid var(--gold); border-radius: 10px; padding: 14px 26px; font-size: 17px; color: var(--gold); z-index: 200; display: none; pointer-events: none; text-align: center; }
 
@@ -412,6 +426,7 @@ socket.on('game_update', async (v) => {
     // pin all cards on the table so everyone can see the final card
     view = v;
     view.state.currentTrick = v.state.lastTrick;
+    lastTrickLength = 0; // reset so final card animates in
     renderGame();
     const winner = v.players[v.state.lastTrickWinner];
     flash(`${winner ? winner.name : '?'} wins the trick!`);
@@ -580,20 +595,51 @@ function renderOpponents() {
 }
 
 let lastTrickLength = 0;
+
+function seatDirection(playerIdx) {
+  // returns a fly-* class based on where the player sits relative to human
+  const myIdx = view.myIdx;
+  const n = view.players.length;
+  if (playerIdx === myIdx) return 'fly-bottom';
+  const oppIndices = [];
+  for (let i = 1; i < n; i++) oppIndices.push((myIdx + i) % n);
+  const pos = oppIndices.indexOf(playerIdx);
+  const total = oppIndices.length;
+  // mirror the seat layout from renderOpponents
+  if (total === 1) return 'fly-top';
+  if (total === 2) return pos === 0 ? 'fly-top-left' : 'fly-top-right';
+  if (total === 3) {
+    if (pos === 0) return 'fly-left';
+    if (pos === 1) return 'fly-top';
+    return 'fly-right';
+  }
+  // 4 opponents
+  if (pos === 0) return 'fly-left';
+  if (pos === 1) return 'fly-top-left';
+  if (pos === 2) return 'fly-top-right';
+  return 'fly-right';
+}
+
 function renderTrick() {
   const s = view.state;
   const center = $('trick-center');
   const newLength = s.currentTrick.length;
-  if (newLength > lastTrickLength) playSwoosh();
+  const isNewCard = newLength > lastTrickLength;
+  if (isNewCard) playSwoosh();
   lastTrickLength = newLength;
   center.innerHTML = '';
-  for (const entry of s.currentTrick) {
+  s.currentTrick.forEach((entry, i) => {
     const slot = document.createElement('div');
     slot.className = 'played-slot';
     slot.innerHTML = `<div class="slot-lbl">${view.players[entry.playerIdx]?.name||''}</div>`;
-    slot.appendChild(buildCard(entry.card, false));
+    const cardEl = buildCard(entry.card, false);
+    // animate only the newest card
+    if (isNewCard && i === newLength - 1) {
+      cardEl.classList.add(seatDirection(entry.playerIdx));
+    }
+    slot.appendChild(cardEl);
     center.appendChild(slot);
-  }
+  });
 }
 
 // delegated hand click — set once, never removed
