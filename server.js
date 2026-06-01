@@ -398,6 +398,7 @@ io.on('connection', (socket) => {
     };
     socket.join(code);
     socket.emit('room_joined', { code, view: playerView(rooms[code], socket.id) });
+    socket.emit('chat_history', rooms[code].chat || []);
     broadcastRoomsList();
   });
 
@@ -497,6 +498,21 @@ io.on('connection', (socket) => {
 
   socket.on('get_rooms', () => {
     socket.emit('rooms_list', openRoomsList());
+  });
+
+  socket.on('chat_message', ({ code, text }) => {
+    const room = getRoom(code);
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.isBot) return;
+    const trimmed = text.trim().slice(0, 200); // cap message length
+    if (!trimmed) return;
+    touch(room);
+    const msg = { name: player.name, text: trimmed, ts: Date.now() };
+    room.chat = room.chat || [];
+    room.chat.push(msg);
+    if (room.chat.length > 100) room.chat.shift(); // keep last 100
+    io.to(code).emit('chat_message', msg);
   });
 
   socket.on('rejoin_room', ({ code, name }) => {
