@@ -99,7 +99,9 @@
   #player-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
   #player-name-lbl { font-size: 13px; color: var(--gold); font-weight: bold; }
   #player-stats { font-size: 12px; color: #8aad8a; }
-  #player-hand { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; min-height: 105px; }
+  #player-hand { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; min-height: 105px; border-radius: 8px; transition: box-shadow 0.3s; }
+  #player-hand.my-turn { box-shadow: 0 0 0 3px var(--gold), 0 0 18px 4px rgba(201,168,76,0.4); animation: pulse-turn 1.4s ease-in-out infinite; }
+  @keyframes pulse-turn { 0%,100% { box-shadow: 0 0 0 3px var(--gold), 0 0 18px 4px rgba(201,168,76,0.3); } 50% { box-shadow: 0 0 0 3px var(--gold), 0 0 26px 8px rgba(201,168,76,0.6); } }
 
   /* CARDS */
   .card { width: 68px; height: 95px; background: #fdfaf0; border: 2px solid #ccc; border-radius: 7px; cursor: pointer; position: relative; box-shadow: 2px 3px 8px rgba(0,0,0,0.5); transition: transform 0.15s, box-shadow 0.15s; display: flex; flex-direction: column; justify-content: space-between; padding: 4px; user-select: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
@@ -594,6 +596,37 @@ function renderTrick() {
   }
 }
 
+// delegated hand click — set once, never removed
+(function() {
+  let ready = false;
+  function initHandListener() {
+    const container = $('player-hand');
+    if (!container || ready) return;
+    ready = true;
+    function handlePlay(e) {
+      const cardEl = e.target.closest('.card');
+      if (!cardEl || cardEl.classList.contains('disabled')) return;
+      const idx = parseInt(cardEl.dataset.cardIdx);
+      if (isNaN(idx)) return;
+      const s = view && view.state;
+      if (!s) return;
+      const myTurn = view.phase === 'play' && s.currentTurnIdx === view.myIdx;
+      if (!myTurn) return;
+      const sorted = [...(view.myHand||[])].sort((a,b) => {
+        const si = SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit);
+        return si !== 0 ? si : rankVal(a.rank) - rankVal(b.rank);
+      });
+      const card = sorted[idx];
+      if (!card || !isLegal(card)) return;
+      e.preventDefault();
+      doPlay(card);
+    }
+    container.addEventListener('click', handlePlay);
+    container.addEventListener('touchend', handlePlay);
+  }
+  document.addEventListener('DOMContentLoaded', initHandListener);
+})();
+
 function renderHand() {
   const s = view.state;
   const myTurn = view.phase === 'play' && s.currentTurnIdx === view.myIdx;
@@ -603,14 +636,12 @@ function renderHand() {
   });
   const container = $('player-hand');
   container.innerHTML = '';
-  hand.forEach(card => {
+  container.classList.toggle('my-turn', myTurn);
+  hand.forEach((card, idx) => {
     const legal = myTurn ? isLegal(card) : false;
     const el = buildCard(card, myTurn && legal);
+    el.dataset.cardIdx = idx;
     el.classList.toggle('disabled', !legal || !myTurn);
-    if (myTurn && legal) {
-      el.onclick = () => doPlay(card);
-      el.addEventListener('touchend', (e) => { e.preventDefault(); doPlay(card); }, { once: true });
-    }
     container.appendChild(el);
   });
 }
