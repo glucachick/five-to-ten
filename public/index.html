@@ -311,6 +311,7 @@ let myName = '';
 let roomCode = '';
 let view = null; // latest game view from server
 let isHost = false;
+let updateSeq = 0; // increments on every game_update to detect stale async callbacks
 
 // ── HELPERS ──────────────────────────────────────────────
 function $(id) { return document.getElementById(id); }
@@ -358,19 +359,31 @@ socket.on('rooms_list', (list) => {
 });
 
 socket.on('game_update', async (v) => {
-  const prev = view;
+  const seq = ++updateSeq;
 
   if ((v.lastResult === 'trick_over' || v.lastResult === 'round_over') && v.state?.lastTrick?.length) {
-    // show the completed trick with all cards visible for 2.5 seconds
+    // pin all cards on the table so everyone can see the final card
     view = v;
-    view.state.currentTrick = v.state.lastTrick; // pin all cards on table
+    view.state.currentTrick = v.state.lastTrick;
     renderGame();
     const winner = v.players[v.state.lastTrickWinner];
     flash(`${winner ? winner.name : '?'} wins the trick!`);
     await sleep(2500);
-    view.state.currentTrick = []; // now clear
+
+    // if a newer update arrived while we were sleeping, don't overwrite it
+    if (seq !== updateSeq) return;
+
+    view.state.currentTrick = [];
+    renderGame();
+
+    if (v.lastResult === 'round_over') {
+      await sleep(300);
+      if (seq === updateSeq) showRoundScores();
+    }
+    return;
   }
 
+  // normal (non trick-ending) update
   view = v;
   renderGame();
 
@@ -381,8 +394,8 @@ socket.on('game_update', async (v) => {
   }
 
   if (v.lastResult === 'round_over') {
-    await sleep(400);
-    showRoundScores();
+    await sleep(300);
+    if (seq === updateSeq) showRoundScores();
   }
 });
 
