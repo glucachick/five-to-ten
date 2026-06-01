@@ -111,6 +111,8 @@
   .c-corner { font-size: 12px; font-weight: bold; line-height: 1.1; }
   .c-corner.bot { transform: rotate(180deg); align-self: flex-end; }
   .c-mid { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 24px; }
+  .c-face { position: absolute; top: 22px; left: 3px; right: 3px; bottom: 22px; overflow: hidden; border-radius: 3px; }
+  .c-face img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
 
   /* BID PANEL */
   #bid-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.72); display: none; align-items: flex-start; justify-content: center; z-index: 100; overflow-y: auto; padding: 16px; }
@@ -582,10 +584,23 @@ function renderMyStats() {
   $('player-stats').textContent = `Score: ${me.score} | Bid: ${bid!==null?bid:'—'} | Tricks: ${s.tricksWon[view.myIdx]}`;
 }
 
+const FACE_RANKS = { J: 'jack', Q: 'queen', K: 'king' };
+const SUIT_NAMES_MAP = { '♠': 'spades', '♥': 'hearts', '♦': 'diamonds', '♣': 'clubs' };
+
 function buildCard(card, clickable) {
   const el = document.createElement('div');
   el.className = `card ${SUIT_COLOR[card.suit]}`;
-  el.innerHTML = `<div class="c-corner">${card.rank}<br>${card.suit}</div><div class="c-mid">${card.suit}</div><div class="c-corner bot">${card.rank}<br>${card.suit}</div>`;
+  const faceKey = FACE_RANKS[card.rank];
+  if (faceKey) {
+    const suitName = SUIT_NAMES_MAP[card.suit];
+    const imgSrc = `/faces/${faceKey}_${suitName}.png`;
+    el.innerHTML = `
+      <div class="c-corner">${card.rank}<br>${card.suit}</div>
+      <div class="c-face"><img src="${imgSrc}" alt="${card.rank} of ${suitName}"></div>
+      <div class="c-corner bot">${card.rank}<br>${card.suit}</div>`;
+  } else {
+    el.innerHTML = `<div class="c-corner">${card.rank}<br>${card.suit}</div><div class="c-mid">${card.suit}</div><div class="c-corner bot">${card.rank}<br>${card.suit}</div>`;
+  }
   return el;
 }
 
