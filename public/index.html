@@ -413,7 +413,7 @@ socket.on('rooms_list', (list) => {
     <li>
       <div>
         <div class="room-entry-name">${r.host}'s game</div>
-        <div class="room-entry-info">${r.playerCount} player${r.playerCount!==1?'s':''}${r.botCount?' + '+r.botCount+' bot'+( r.botCount!==1?'s':''):''} · Code: ${r.code}</div>
+        <div class="room-entry-info">${r.playerCount} player${r.playerCount!==1?'s':''}${r.botCount?' + '+r.botCount+' bot'+(r.botCount!==1?'s':''):''}</div>
       </div>
       <button class="btn-quick-join" onclick="quickJoin('${r.code}')">JOIN</button>
     </li>`).join('');
