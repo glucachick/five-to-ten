@@ -524,20 +524,34 @@ socket.on('chat_message', (msg) => {
   }
 });
 
-function appendChatMsg(msg) {
-  const el = document.createElement('div');
-  const isMine = msg.name === myName;
-  el.className = 'chat-msg' + (isMine ? ' mine' : '');
-  const t = new Date(msg.ts);
-  const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  el.innerHTML = `<span class="chat-name">${msg.name}</span><span class="chat-time">${time}</span><br><span class="chat-text">${escapeHtml(msg.text)}</span>`;
-  const box = $('chat-messages');
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-}
-
 function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function appendChatMsg(msg) {
+  const isMine = msg.name === myName;
+  const t = new Date(msg.ts);
+  const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // in-game chat panel
+  const gameBox = $('chat-messages');
+  if (gameBox) {
+    const el = document.createElement('div');
+    el.className = 'chat-msg' + (isMine ? ' mine' : '');
+    el.innerHTML = `<span class="chat-name">${msg.name}</span><span class="chat-time">${time}</span><br><span class="chat-text">${escapeHtml(msg.text)}</span>`;
+    gameBox.appendChild(el);
+    gameBox.scrollTop = gameBox.scrollHeight;
+  }
+
+  // lobby chat box
+  const lobbyBox = $('lobby-chat-msgs');
+  if (lobbyBox) {
+    const line = document.createElement('div');
+    line.style.cssText = 'margin-bottom:4px';
+    line.innerHTML = `<span style="color:${isMine?'#4ade80':'var(--gold)'};font-weight:bold">${msg.name}:</span> <span style="color:#e0d8c0">${escapeHtml(msg.text)}</span>`;
+    lobbyBox.appendChild(line);
+    lobbyBox.scrollTop = lobbyBox.scrollHeight;
+  }
 }
 
 function toggleChat() {
@@ -551,30 +565,16 @@ function toggleChat() {
   }
 }
 
-function sendLobbyChat() {
-  const input = $('lobby-chat-input');
+function sendChat() {
+  const input = $('chat-input');
   const text = input.value.trim();
   if (!text || !roomCode) return;
   socket.emit('chat_message', { code: roomCode, text });
   input.value = '';
 }
 
-// mirror chat messages into lobby chat box too
-const _origAppend = appendChatMsg;
-function appendChatMsg(msg) {
-  _origAppend(msg);
-  const lobbyBox = $('lobby-chat-msgs');
-  if (!lobbyBox) return;
-  const isMine = msg.name === myName;
-  const line = document.createElement('div');
-  line.style.cssText = 'margin-bottom:4px';
-  line.innerHTML = `<span style="color:${isMine?'#4ade80':'var(--gold)'};font-weight:bold">${msg.name}:</span> <span style="color:#e0d8c0">${escapeHtml(msg.text)}</span>`;
-  lobbyBox.appendChild(line);
-  lobbyBox.scrollTop = lobbyBox.scrollHeight;
-}
-
-function sendChat() {
-  const input = $('chat-input');
+function sendLobbyChat() {
+  const input = $('lobby-chat-input');
   const text = input.value.trim();
   if (!text || !roomCode) return;
   socket.emit('chat_message', { code: roomCode, text });
