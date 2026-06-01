@@ -338,6 +338,38 @@ function toast(msg, ms=2200) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function playSwoosh() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const bufferSize = ctx.sampleRate * 0.18;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    // bandpass filter to shape noise into a swoosh
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1800, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.18);
+    filter.Q.value = 0.8;
+
+    // volume envelope: quick attack, fast decay
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+    source.stop(ctx.currentTime + 0.2);
+  } catch(e) {}
+}
+
 function flash(msg) {
   const el = $('trick-flash'); el.textContent = msg; el.style.display='block';
   setTimeout(() => el.style.display='none', 1200);
@@ -545,9 +577,13 @@ function renderOpponents() {
   place('seat-left',leftIdx); place('seat-top',topIdx); place('seat-right',rightIdx);
 }
 
+let lastTrickLength = 0;
 function renderTrick() {
   const s = view.state;
   const center = $('trick-center');
+  const newLength = s.currentTrick.length;
+  if (newLength > lastTrickLength) playSwoosh();
+  lastTrickLength = newLength;
   center.innerHTML = '';
   for (const entry of s.currentTrick) {
     const slot = document.createElement('div');
@@ -618,6 +654,7 @@ function isLegal(card) {
 
 // ── ACTIONS ───────────────────────────────────────────────
 function doPlay(card) {
+  playSwoosh();
   socket.emit('play_card', { code: roomCode, card });
 }
 
