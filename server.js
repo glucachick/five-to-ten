@@ -17,6 +17,9 @@ const RANK_VAL = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:11,Q:12,K:13,A:14};
 const ROUND_SEQUENCE = [5,6,7,8,9,10,10,9,8,7,6,5];
 const BOT_NAMES = ['Ace','Blackwood','Cutthroat','Duchess','Eddie'];
 const BOT_THINK_MS = 900;
+const MAX_ROOMS = 20;              // total open rooms allowed at once
+const MAX_ROOMS_PER_IP = 2;        // one person can't hog all slots
+const ROOM_IDLE_MS = 30 * 60 * 1000; // auto-delete rooms idle for 30 min
 
 const rooms = {};
 
@@ -376,9 +379,20 @@ io.on('connection', (socket) => {
   socket.emit('rooms_list', openRoomsList());
 
   socket.on('create_room', ({ name }) => {
+    // global room cap
+    const openRooms = Object.values(rooms).filter(r => r.phase === 'lobby');
+    if (openRooms.length >= MAX_ROOMS) {
+      socket.emit('error', 'Server is full — too many open games. Try again later.'); return;
+    }
+    // per-IP cap
+    const ip = socket.handshake.headers['x-forwarded-for']?.split(',')[0].trim() || socket.handshake.address;
+    const byThisIP = openRooms.filter(r => r.creatorIP === ip).length;
+    if (byThisIP >= MAX_ROOMS_PER_IP) {
+      socket.emit('error', 'You already have an open game. Please start or close it first.'); return;
+    }
     const code = makeRoomCode();
     rooms[code] = {
-      code, host: socket.id, phase: 'lobby',
+      code, host: socket.id, phase: 'lobby', creatorIP: ip, lastActivity: Date.now(),
       players: [{ id: socket.id, name, score: 0, roundScores: [], connected: true, isBot: false }],
       state: null,
     };
@@ -429,6 +443,7 @@ io.on('connection', (socket) => {
   socket.on('start_game', ({ code }) => {
     const room = getRoom(code);
     if (!room) return;
+    touch(room);
     if (room.host !== socket.id) { socket.emit('error', 'Only the host can start.'); return; }
     if (room.players.length < 2) { socket.emit('error', 'Need at least 2 players.'); return; }
     const n = room.players.length;
@@ -449,6 +464,7 @@ io.on('connection', (socket) => {
   socket.on('place_bid', ({ code, bid }) => {
     const room = getRoom(code);
     if (!room || room.phase !== 'bid') return;
+    touch(room);
     const playerIdx = room.players.findIndex(p => p.id === socket.id);
     if (playerIdx !== room.state.currentTurnIdx) { socket.emit('error', 'Not your turn to bid.'); return; }
     if (bid < 0 || bid > room.state.totalTricks) { socket.emit('error', 'Invalid bid.'); return; }
@@ -460,6 +476,7 @@ io.on('connection', (socket) => {
   socket.on('play_card', ({ code, card }) => {
     const room = getRoom(code);
     if (!room || room.phase !== 'play') return;
+    touch(room);
     const playerIdx = room.players.findIndex(p => p.id === socket.id);
     if (playerIdx !== room.state.currentTurnIdx) { socket.emit('error', 'Not your turn.'); return; }
     if (!isLegalPlay(room.state.hands[playerIdx], card, room.state.currentTrick)) {
@@ -510,6 +527,23 @@ function broadcastViews(room, result) {
     io.to(p.id).emit('game_update', view);
   }
 }
+
+// ── IDLE ROOM CLEANUP ────────────────────────────────────
+// bump lastActivity on any game action
+function touch(room) { if (room) room.lastActivity = Date.now(); }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const code of Object.keys(rooms)) {
+    const room = rooms[code];
+    if (now - (room.lastActivity || 0) > ROOM_IDLE_MS) {
+      console.log(`Removing idle room ${code}`);
+      io.to(code).emit('error', 'Room closed due to inactivity.');
+      delete rooms[code];
+    }
+  }
+  broadcastRoomsList();
+}, 5 * 60 * 1000); // check every 5 minutes
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => console.log(`Five to Ten server on port ${PORT}`));
