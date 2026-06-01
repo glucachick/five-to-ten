@@ -108,7 +108,7 @@
   .card.disabled { cursor: default; opacity: 0.65; }
   .card.disabled:hover { transform: none; }
   .card.red { color: var(--red); } .card.black { color: var(--black); }
-  .c-corner { font-size: 12px; font-weight: bold; line-height: 1.1; }
+  .c-corner { font-size: 12px; font-weight: bold; line-height: 1; white-space: nowrap; }
   .c-corner.bot { transform: rotate(180deg); align-self: flex-end; }
   .c-mid { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 24px; }
   .c-face { position: absolute; top: 22px; left: 3px; right: 3px; bottom: 22px; overflow: hidden; border-radius: 3px; display: flex; align-items: center; justify-content: center; background: #f5f0e8; pointer-events: none; }
@@ -491,7 +491,7 @@ function renderGame() {
     const tc = s.trumpCard;
     const mini = $('trump-mini');
     mini.className = SUIT_COLOR[tc.suit];
-    $('tmc-top').innerHTML = `${tc.rank}<br>${tc.suit}`;
+    $('tmc-top').textContent = `${tc.rank}${tc.suit}`;
     $('tmc-suit').textContent = tc.suit;
   }
 
@@ -598,11 +598,11 @@ function buildCard(card, clickable) {
     const suitName = SUIT_NAMES_MAP[card.suit];
     const imgSrc = `/faces/${faceKey}_${suitName}.png`;
     el.innerHTML = `
-      <div class="c-corner">${card.rank}<br>${card.suit}</div>
+      <div class="c-corner">${card.rank}${card.suit}</div>
       <div class="c-face"><img src="${imgSrc}" alt="${card.rank} of ${suitName}"></div>
-      <div class="c-corner bot">${card.rank}<br>${card.suit}</div>`;
+      <div class="c-corner bot">${card.rank}${card.suit}</div>`;
   } else {
-    el.innerHTML = `<div class="c-corner">${card.rank}<br>${card.suit}</div><div class="c-mid">${card.suit}</div><div class="c-corner bot">${card.rank}<br>${card.suit}</div>`;
+    el.innerHTML = `<div class="c-corner">${card.rank}${card.suit}</div><div class="c-mid">${card.suit}</div><div class="c-corner bot">${card.rank}${card.suit}</div>`;
   }
   return el;
 }
@@ -626,9 +626,9 @@ function showBidPanel() {
   const tc = s.trumpCard || { suit: s.trump, rank: '?' };
   const btcCard = $('bid-trump-card');
   btcCard.className = SUIT_COLOR[tc.suit];
-  $('btc-top').innerHTML = `${tc.rank}<br>${tc.suit}`;
+  $('btc-top').textContent = `${tc.rank}${tc.suit}`;
   $('btc-mid').textContent = tc.suit;
-  $('btc-bot').innerHTML = `${tc.rank}<br>${tc.suit}`;
+  $('btc-bot').textContent = `${tc.rank}${tc.suit}`;
   $('bid-prompt').textContent = `You have ${s.totalTricks} cards. How many tricks will you take?`;
 
   const btns = $('bid-btns');
