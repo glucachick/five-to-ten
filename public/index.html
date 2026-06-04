@@ -231,6 +231,7 @@
     </div>
     <div style="text-align:center">
       <button class="btn" onclick="doCreate()">CREATE ROOM</button>
+  <button class="btn btn-sec" id="btn-rejoin" onclick="doRejoin()" style="display:none">REJOIN LAST GAME</button>
     </div>
     <div class="divider">— or join an existing room —</div>
     <div class="form-group">
@@ -436,10 +437,37 @@ function flash(msg) {
 }
 
 // ── SOCKET EVENTS ─────────────────────────────────────────
+const SAVE_KEY = 'fiveToTen_session';
+
+function saveSession() {
+  if (roomCode && myName) localStorage.setItem(SAVE_KEY, JSON.stringify({ code: roomCode, name: myName }));
+}
+
+function clearSession() { localStorage.removeItem(SAVE_KEY); }
+
+function loadSession() { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch(e) { return null; } }
+
+// show rejoin button if a saved session exists
+window.addEventListener('load', () => {
+  const s = loadSession();
+  if (s) {
+    const btn = $('btn-rejoin');
+    if (btn) { btn.style.display = 'inline-block'; btn.textContent = `REJOIN (${s.name})`; }
+  }
+});
+
+function doRejoin() {
+  const s = loadSession();
+  if (!s) return;
+  myName = s.name;
+  socket.emit('request_room_state', { code: s.code, name: s.name });
+}
+
 socket.on('room_joined', ({ code, view: v }) => {
   roomCode = code;
   view = v;
   isHost = v.players[0].id === socket.id;
+  saveSession();
   renderLobby();
   showScreen('lobby');
 });
@@ -447,6 +475,12 @@ socket.on('room_joined', ({ code, view: v }) => {
 socket.on('room_update', (v) => {
   view = v;
   if (v.phase === 'lobby') renderLobby();
+});
+
+// auto-rejoin on reconnect if we were in a game/lobby
+socket.on('connect', () => {
+  if (!roomCode || !myName) return; // not in a game yet
+  socket.emit('request_room_state', { code: roomCode, name: myName });
 });
 
 socket.on('rooms_list', (list) => {
@@ -582,6 +616,7 @@ function sendLobbyChat() {
 }
 
 socket.on('game_over', ({ players }) => {
+  clearSession();
   const sorted = [...players].sort((a,b) => b.score - a.score);
   $('go-winner').textContent = sorted[0].name + ' Wins!';
   const tbl = $('go-table');
@@ -608,7 +643,7 @@ function doJoin() {
 }
 
 function doStart() { socket.emit('start_game', { code: roomCode }); }
-function doLeave() { location.reload(); }
+function doLeave() { clearSession(); location.reload(); }
 function doAddBot() { socket.emit('add_bot', { code: roomCode }); }
 function doRemoveBot() { socket.emit('remove_bot', { code: roomCode }); }
 function quickJoin(code) { $('inp-code').value = code; doJoin(); }

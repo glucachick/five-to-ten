@@ -413,7 +413,8 @@ io.on('connection', (socket) => {
     room.players.push({ id: socket.id, name, score: 0, roundScores: [], connected: true, isBot: false });
     socket.join(code.toUpperCase());
     socket.emit('room_joined', { code: room.code, view: playerView(room, socket.id) });
-    io.to(room.code).emit('room_update', publicRoom(room));
+    socket.emit('chat_history', room.chat || []);
+    io.to(room.code).emit('room_update', publicRoom(room)); // updates all players including host
     broadcastRoomsList();
   });
 
@@ -530,7 +531,38 @@ io.on('connection', (socket) => {
     for (const code of Object.keys(rooms)) {
       const room = rooms[code];
       const p = room.players.find(p => p.id === socket.id);
-      if (p) { p.connected = false; io.to(room.code).emit('room_update', publicRoom(room)); broadcastRoomsList(); }
+      if (!p) continue;
+      p.connected = false;
+      // if host disconnects from lobby, delete the room so the IP slot is freed
+      if (room.phase === 'lobby' && room.host === socket.id) {
+        io.to(room.code).emit('error', 'Host left — room closed.');
+        delete rooms[code];
+        broadcastRoomsList();
+      } else {
+        io.to(room.code).emit('room_update', publicRoom(room));
+        broadcastRoomsList();
+      }
+    }
+  });
+
+  // client asks for current room state (used on reconnect)
+  socket.on('request_room_state', ({ code, name }) => {
+    const room = getRoom(code);
+    if (!room) { socket.emit('error', 'Room no longer exists. Please start a new game.'); return; }
+    const p = room.players.find(p => p.name.toLowerCase() === name.toLowerCase() && !p.isBot);
+    if (!p) { socket.emit('error', 'Could not find you in that room.'); return; }
+    // update socket id in case it changed on reconnect
+    const wasHost = room.host === p.id;
+    p.id = socket.id;
+    p.connected = true;
+    if (wasHost) room.host = socket.id;
+    socket.join(room.code);
+    socket.emit('room_joined', { code: room.code, view: playerView(room, socket.id) });
+    socket.emit('chat_history', room.chat || []);
+    io.to(room.code).emit('room_update', publicRoom(room));
+    if (room.phase !== 'lobby') {
+      const view = playerView(room, socket.id);
+      socket.emit('game_update', view);
     }
   });
 });
