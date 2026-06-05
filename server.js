@@ -19,9 +19,10 @@ const BOT_NAMES = ['Ace','Blackwood','Cutthroat','Duchess','Eddie'];
 const BOT_THINK_MS = 900;
 
 const BOT_DIFFICULTY = {
-  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false },
-  medium: { sims: 100, bidVariance: 0.5, playSmart: true  },
-  hard:   { sims: 300, bidVariance: 0.1, playSmart: true  },
+  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false },
+  medium: { sims: 100, bidVariance: 0.5, playSmart: true,  master: false },
+  hard:   { sims: 300, bidVariance: 0.1, playSmart: true,  master: false },
+  master: { sims: 400, bidVariance: 0.05,playSmart: true,  master: true  },
 };
 const MAX_ROOMS = 20;              // total open rooms allowed at once
 const MAX_ROOMS_PER_IP = 2;        // one person can't hog all slots
@@ -154,47 +155,89 @@ function bestLeadToDuck(hand, trump, played) {
 // We simulate many random deals of the remaining cards to estimate
 // how many tricks this hand will win on average.
 
+// Quick heuristic bid for opponents inside Master simulations
+function quickSimBid(hand, trump) {
+  let est = 0;
+  for (const card of hand) {
+    const rv = rankVal(card.rank);
+    if (card.suit === trump) {
+      if (rv >= 13) est += 0.9;
+      else if (rv >= 11) est += 0.6;
+      else est += 0.25;
+    } else {
+      if (rv === 14) est += 0.65;
+      else if (rv === 13) est += 0.35;
+    }
+  }
+  return Math.round(est);
+}
+
+// Basic sim play: everyone always tries to win (used by medium/hard sims)
 function simChooseCard(hand, trick, trump) {
   const legal = getLegal(hand, trick);
   if (trick.length === 0) {
-    // Lead: highest trump, else highest card
     const trumps = legal.filter(c => c.suit === trump).sort((a,b) => rankVal(b.rank)-rankVal(a.rank));
     return trumps.length ? trumps[0] : legal.slice().sort((a,b) => rankVal(b.rank)-rankVal(a.rank))[0];
   }
-  // Find the current best card in the trick
   let bestCard = trick[0].card;
-  for (const entry of trick) {
-    if (beats(entry.card, bestCard, trump)) bestCard = entry.card;
-  }
-  // Try to beat it with the minimum card possible
+  for (const entry of trick) if (beats(entry.card, bestCard, trump)) bestCard = entry.card;
   const canBeat = legal.filter(c => beats(c, bestCard, trump));
   if (canBeat.length) return canBeat.sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
-  // Can't beat it — dump lowest card
   return legal.slice().sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
 }
 
-function runOneSimulation(allHands, trump, numPlayers, handSize) {
-  const hands = allHands.map(h => h.map(c => ({...c}))); // deep copy
-  let myTricks = 0;
-  let leader = 0; // player 0 = the bidder (conservative: start leading)
+// Smart sim play: zero bidders duck, everyone else always attacks
+// (extra tricks always worth +1 pt so regular bidders never duck)
+function simChooseCardMaster(hand, trick, trump, bid, tricksWon) {
+  const legal = getLegal(hand, trick);
+  if (bid === 0) {
+    // Duck at all costs
+    if (!trick.length) {
+      const nt = legal.filter(c => c.suit !== trump).sort((a,b) => rankVal(a.rank)-rankVal(b.rank));
+      return nt.length ? nt[0] : legal.sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
+    }
+    const losing = legal.filter(c => trickWinner([...trick,{playerIdx:99,card:c}],trump) !== 99);
+    return losing.length
+      ? losing.sort((a,b) => rankVal(b.rank)-rankVal(a.rank))[0]
+      : legal.sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
+  }
+  // Regular bidder: always try to win (extra tricks = extra points)
+  if (!trick.length) {
+    const t = legal.filter(c => c.suit === trump).sort((a,b) => rankVal(b.rank)-rankVal(a.rank));
+    return t.length ? t[0] : legal.sort((a,b) => rankVal(b.rank)-rankVal(a.rank))[0];
+  }
+  let bestCard = trick[0].card;
+  for (const entry of trick) if (beats(entry.card, bestCard, trump)) bestCard = entry.card;
+  const canBeat = legal.filter(c => beats(c, bestCard, trump));
+  if (canBeat.length) return canBeat.sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
+  return legal.sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
+}
+
+function runOneSimulation(allHands, trump, numPlayers, handSize, smartSim = false) {
+  const hands = allHands.map(h => h.map(c => ({...c})));
+  const simBids = smartSim ? allHands.map(h => quickSimBid(h, trump)) : null;
+  const simWon  = new Array(numPlayers).fill(0);
+  let myTricks = 0, leader = 0;
 
   for (let t = 0; t < handSize; t++) {
     const trick = [];
     for (let pos = 0; pos < numPlayers; pos++) {
       const pIdx = (leader + pos) % numPlayers;
-      const card = simChooseCard(hands[pIdx], trick, trump);
-      const ci = hands[pIdx].findIndex(c => c.rank === card.rank && c.suit === card.suit);
-      hands[pIdx].splice(ci, 1);
+      const card = smartSim
+        ? simChooseCardMaster(hands[pIdx], trick, trump, simBids[pIdx], simWon[pIdx])
+        : simChooseCard(hands[pIdx], trick, trump);
+      hands[pIdx].splice(hands[pIdx].findIndex(c => c.rank === card.rank && c.suit === card.suit), 1);
       trick.push({ playerIdx: pIdx, card });
     }
     const winner = trickWinner(trick, trump);
+    simWon[winner]++;
     if (winner === 0) myTricks++;
     leader = winner;
   }
   return myTricks;
 }
 
-function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200, bidVariance = 0.2) {
+function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200, bidVariance = 0.2, smartSim = false) {
   // Build the unseen card pool: full deck minus my hand minus the shown trump card
   const mySet = new Set(hand.map(c => c.rank + c.suit));
   const trumpKey = trumpCard ? trumpCard.rank + trumpCard.suit : null;
@@ -217,7 +260,7 @@ function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200, 
     for (let i = 0; i < numOpponents; i++) {
       allHands.push(pool.slice(i * handSize, (i + 1) * handSize));
     }
-    totalWon += runOneSimulation(allHands, trump, numPlayers, handSize);
+    totalWon += runOneSimulation(allHands, trump, numPlayers, handSize, smartSim);
   }
 
   const expected = totalWon / numSims;
@@ -344,8 +387,92 @@ function playTrapper(legal, trick, trump, playerIdx, targetIdx, played) {
     });
     if (notBeating.length) return notBeating.slice().sort((a, b) => rankVal(b.rank) - rankVal(a.rank))[0];
   }
-  // Otherwise just duck normally
   return playToDuck(legal, trick, trump, playerIdx);
+}
+
+// ── MASTER PLAY ──────────────────────────────────────────
+function chooseBotCardMaster(s, playerIdx) {
+  const hand = s.hands[playerIdx];
+  const trick = s.currentTrick;
+  const trump = s.trump;
+  const bid = s.bids[playerIdx];
+  const won = s.tricksWon[playerIdx];
+  const legal = getLegal(hand, trick);
+  const ps = playedSet(s);
+  const voids = s.voidPlayers || {};
+  const n = s.hands.length;
+
+  // Find clean zero bidders sorted by score (highest score = most dangerous)
+  const zeroBidderTargets = s.bids
+    .map((b, i) => ({ b, i, score: 0 })) // scores not in state but we can rank by bid/won
+    .filter(({ b, i }) => b === 0 && s.tricksWon[i] === 0 && i !== playerIdx)
+    .sort((a, z) => z.score - a.score);
+  const target = zeroBidderTargets.length ? zeroBidderTargets[0].i : null;
+
+  // ── ZERO BIDDER ─────────────────────────────────────────
+  if (bid === 0) {
+    if (won > 0) return playToWin(legal, trick, trump, playerIdx, ps); // rogue
+    if (!trick.length) {
+      // Lead lowest card in the suit where we have the most cards (safest exit)
+      const suitCounts = {};
+      for (const c of hand) suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1;
+      const safeSuit = Object.keys(suitCounts).filter(s => s !== trump)
+        .sort((a, b) => suitCounts[b] - suitCounts[a])[0];
+      const pool = safeSuit ? legal.filter(c => c.suit === safeSuit) : legal;
+      return (pool.length ? pool : legal).sort((a, b) => rankVal(a.rank) - rankVal(b.rank))[0];
+    }
+    const losing = legal.filter(c => trickWinner([...trick, { playerIdx, card: c }], trump) !== playerIdx);
+    return losing.length
+      ? losing.sort((a, b) => rankVal(b.rank) - rankVal(a.rank))[0]
+      : legal.sort((a, b) => rankVal(a.rank) - rankVal(b.rank))[0];
+  }
+
+  // ── NEED MORE TRICKS ─────────────────────────────────────
+  const stillNeed = bid - won;
+  if (stillNeed > 0) {
+    if (!trick.length) return bestLeadToWin(hand, trump, ps);
+    const win = minToWin(legal, trick, trump, playerIdx);
+    if (win) return win;
+    const dump = legal.filter(c => c.suit !== trump).sort((a, b) => rankVal(a.rank) - rankVal(b.rank));
+    return dump.length ? dump[0] : legal.sort((a, b) => rankVal(a.rank) - rankVal(b.rank))[0];
+  }
+
+  // ── MET BID ──────────────────────────────────────────────
+  // Always try to win more (extra tricks = +1 pt each)
+  // BUT if a clean zero bidder exists, prioritize trapping them
+
+  if (target !== null) {
+    // Master trapper: use void knowledge to pick the most dangerous lead
+    if (!trick.length) {
+      // Find a suit where target is known to be void — leads there force them to trump
+      const voidSuits = SUITS.filter(s =>
+        s !== trump && voids[s] && voids[s].includes(target)
+      );
+      if (voidSuits.length) {
+        // Lead lowest card in a suit target is void in — they'll have to trump (risk winning)
+        const voidLeads = legal.filter(c => voidSuits.includes(c.suit))
+          .sort((a, b) => rankVal(a.rank) - rankVal(b.rank));
+        if (voidLeads.length) return voidLeads[0];
+      }
+      // No known void — lead second-lowest non-trump to look weak
+      const nonTrump = legal.filter(c => c.suit !== trump).sort((a, b) => rankVal(a.rank) - rankVal(b.rank));
+      if (nonTrump.length > 1) return nonTrump[1];
+      if (nonTrump.length) return nonTrump[0];
+    }
+
+    // Following: if target is currently winning, let them keep it
+    const winnerNow = currentWinner(trick, trump);
+    if (winnerNow === target) {
+      const notBeating = legal.filter(c => trickWinner([...trick, { playerIdx, card: c }], trump) !== playerIdx);
+      if (notBeating.length) return notBeating.sort((a, b) => rankVal(b.rank) - rankVal(a.rank))[0];
+    }
+  }
+
+  // No trap opportunity — just try to win extra tricks (worth +1 each)
+  if (!trick.length) return bestLeadToWin(hand, trump, ps);
+  const win = minToWin(legal, trick, trump, playerIdx);
+  if (win) return win;
+  return legal.sort((a, b) => rankVal(a.rank) - rankVal(b.rank))[0];
 }
 
 // ── ROOM MANAGEMENT ──────────────────────────────────────
@@ -425,6 +552,7 @@ function dealRound(room) {
   room.state.lastTrickWinner = null;
   room.state.lastTrick = null;
   room.state.playedCards = [];
+  room.state.voidPlayers = {}; // voidPlayers[suit] = [playerIdx, ...]
   room.state.bidTurnIdx = (room.state.dealerIdx + 1) % n;
   room.state.bidsCollected = 0;
   room.state.currentTurnIdx = room.state.bidTurnIdx;
@@ -460,6 +588,17 @@ function recordPlay(room, playerIdx, card) {
   hand.splice(i, 1);
   s.playedCards = s.playedCards || [];
   s.playedCards.push(card);
+
+  // Track void suits: if player didn't follow the led suit, they're void in it
+  if (s.currentTrick.length > 0) {
+    const ledSuit = s.currentTrick[0].card.suit;
+    if (card.suit !== ledSuit) {
+      s.voidPlayers = s.voidPlayers || {};
+      if (!s.voidPlayers[ledSuit]) s.voidPlayers[ledSuit] = [];
+      if (!s.voidPlayers[ledSuit].includes(playerIdx)) s.voidPlayers[ledSuit].push(playerIdx);
+    }
+  }
+
   s.currentTrick.push({ playerIdx, card });
 
   if (s.currentTrick.length === n) {
@@ -522,13 +661,13 @@ function scheduleBotsIfNeeded(room) {
 
     if (room.phase === 'bid') {
       const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
-      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, room.players.length, s.trumpCard, diff.sims, diff.bidVariance);
+      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, room.players.length, s.trumpCard, diff.sims, diff.bidVariance, diff.master);
       recordBid(room, idx, bid);
       broadcastViews(room);
       scheduleBotsIfNeeded(room);
     } else if (room.phase === 'play') {
       const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
-      const card = chooseBotCard(s, idx, diff.playSmart);
+      const card = diff.master ? chooseBotCardMaster(s, idx) : chooseBotCard(s, idx, diff.playSmart);
       const result = recordPlay(room, idx, card);
       broadcastViews(room, result);
       if (result === 'round_over') {
