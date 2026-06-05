@@ -78,8 +78,8 @@
   /* TABLE */
   #table-area { display: grid; grid-template-areas: "left top-s right" "left trick right"; grid-template-columns: 80px 1fr 80px; grid-template-rows: auto 1fr; overflow: hidden; }
   #seat-top { grid-area: top-s; display: flex; justify-content: space-evenly; align-items: flex-start; padding: 10px 20px 4px; }
-  #seat-left { grid-area: left; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 8px 4px; }
-  #seat-right { grid-area: right; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 8px 4px; }
+  #seat-left { grid-area: left; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 4px 2px; }
+  #seat-right { grid-area: right; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding: 4px 2px; }
 
   @media (max-width: 480px) {
     #table-area { grid-template-columns: 58px 1fr 58px; }
@@ -99,16 +99,27 @@
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
 
   /* OPPONENT SEAT */
+  /* top seat opponents — horizontal layout */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 110px; }
-  .opp-name { font-size: 12px; color: #c8b87a; text-align: center; }
+  .opp-name { font-size: 11px; color: #c8b87a; text-align: center; }
   .opp-name.active { color: #ffe066; font-weight: bold; }
+  .opp-info { font-size: 10px; color: #8aad8a; text-align: center; }
   .card-fan { display: flex; flex-direction: row; }
-  .card-fan-vertical { display: flex; flex-direction: column; align-items: center; }
   .card-back { width: 32px; height: 46px; background: linear-gradient(135deg, #1a3a8a, #0d2060); border: 2px solid #c8b87a; border-radius: 4px; margin-left: -14px; box-shadow: 1px 1px 4px rgba(0,0,0,0.5); }
   .card-back:first-child { margin-left: 0; }
+
+  /* left/right seat opponents — horizontal layout with vertical fan + rotated info */
+  .opp-seat-side { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+  .card-fan-vertical { display: flex; flex-direction: column; align-items: center; }
   .card-fan-vertical .card-back { margin-left: 0; margin-top: -30px; }
   .card-fan-vertical .card-back:first-child { margin-top: 0; }
-  .opp-info { font-size: 11px; color: #8aad8a; text-align: center; }
+  .opp-info-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; writing-mode: vertical-rl; text-orientation: mixed; font-size: 10px; color: #8aad8a; white-space: nowrap; max-height: 140px; overflow: hidden; }
+  .opp-info-side .opp-name { writing-mode: vertical-rl; font-size: 11px; color: #c8b87a; text-align: center; }
+  .opp-info-side .opp-name.active { color: #ffe066; font-weight: bold; }
+  /* left seat: info on the right of cards (toward center) */
+  .seat-left-player { flex-direction: row; }
+  /* right seat: info on the left of cards (toward center) */
+  .seat-right-player { flex-direction: row-reverse; }
 
   /* PLAYER HAND */
   #player-area { padding: 8px 14px 12px; background: rgba(0,0,0,0.25); border-top: 1px solid rgba(201,168,76,0.2); }
@@ -779,9 +790,16 @@ function renderOpponents() {
 
   ['seat-left','seat-top','seat-right'].forEach(id => $(id).innerHTML='');
 
-  const place = (containerId, indices, vertical = false) => {
-    const container = $(containerId);
-    const fanClass = vertical ? 'card-fan-vertical' : 'card-fan';
+  const diff = view.botDifficulty || 'medium';
+  const diffLabel = { easy:'Easy', medium:'Medium', hard:'Hard', master:'ST̲E̲V̲I̲L̲' }[diff] || diff;
+
+  function playerLabel(p) {
+    if (!p.isBot) return `${p.name} <span style="font-size:9px;color:#8aad8a">(human)</span>`;
+    return `${p.name} <span style="font-size:9px;color:#8aad8a">(bot: ${diffLabel})</span>`;
+  }
+
+  const placeTop = (indices) => {
+    const container = $('seat-top');
     for (const i of indices) {
       const p = view.players[i];
       const handSize = s.handSizes[i] || 0;
@@ -789,17 +807,40 @@ function renderOpponents() {
       const el = document.createElement('div');
       el.className = 'opp-seat';
       el.innerHTML = `
-        <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
-        <div class="${fanClass}">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
-        <div style="font-size:12px;color:var(--gold)">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
+        <div class="opp-name${isActive?' active':''}">${playerLabel(p)}${s.dealerIdx===i?' ♦':''}</div>
+        <div class="card-fan">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
+        <div style="font-size:11px;color:var(--gold)">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
         <div class="opp-info">Tricks: ${s.tricksWon[i]} | Score: ${p.score}</div>
       `;
       container.appendChild(el);
     }
   };
-  place('seat-left', leftIdx, true);   // vertical fan
-  place('seat-top',  topIdx, false);   // horizontal fan
-  place('seat-right',rightIdx, true);  // vertical fan
+
+  const placeSide = (containerId, indices, sideClass) => {
+    const container = $(containerId);
+    for (const i of indices) {
+      const p = view.players[i];
+      const handSize = s.handSizes[i] || 0;
+      const isActive = s.currentTurnIdx === i;
+      const el = document.createElement('div');
+      el.className = `opp-seat-side ${sideClass}`;
+      el.innerHTML = `
+        <div class="card-fan-vertical">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
+        <div class="opp-info-side">
+          <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
+          <span style="font-size:9px;color:#8aad8a">${p.isBot?'bot: '+diffLabel:'human'}</span>
+          <span style="color:var(--gold)">${s.bids[i]!==null?'Bid:'+s.bids[i]:''}</span>
+          <span>T:${s.tricksWon[i]}</span>
+          <span>${p.score}pts</span>
+        </div>
+      `;
+      container.appendChild(el);
+    }
+  };
+
+  placeTop(topIdx);
+  placeSide('seat-left',  leftIdx,  'seat-left-player');
+  placeSide('seat-right', rightIdx, 'seat-right-player');
 }
 
 let lastTrickLength = 0;
