@@ -923,8 +923,8 @@ function renderTrick() {
       const pr = pile.getBoundingClientRect();
       const pileX = pr.left + pr.width / 2 - wrapRect.left;
       const pileY = pr.top + pr.height / 2 - wrapRect.top;
-      // 75% of the way from pile toward center = close to pile, nudged in
-      const t = 0.28;
+      // fraction of the way from pile toward center (higher = closer to middle)
+      const t = 0.48;
       x = pileX + (centerX - pileX) * t;
       y = pileY + (centerY - pileY) * t;
     }
