@@ -98,22 +98,13 @@
   .played-slot .slot-lbl { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
-  /* Radial positioning based on player count and position in turn order */
-  .played-slot[data-players="1"][data-pos="0"] { transform: translateX(-65px) translateY(0px); }
-  .played-slot[data-players="2"][data-pos="0"] { transform: translateX(-65px) translateY(0px); }
-  .played-slot[data-players="2"][data-pos="1"] { transform: translateX(65px) translateY(-55px); }
-  .played-slot[data-players="3"][data-pos="0"] { transform: translateX(-75px) translateY(25px); }
-  .played-slot[data-players="3"][data-pos="1"] { transform: translateX(0px) translateY(-85px); }
-  .played-slot[data-players="3"][data-pos="2"] { transform: translateX(75px) translateY(25px); }
-  .played-slot[data-players="4"][data-pos="0"] { transform: translateX(-85px) translateY(0px); }
-  .played-slot[data-players="4"][data-pos="1"] { transform: translateX(-45px) translateY(-75px); }
-  .played-slot[data-players="4"][data-pos="2"] { transform: translateX(45px) translateY(-75px); }
-  .played-slot[data-players="4"][data-pos="3"] { transform: translateX(85px) translateY(0px); }
-  .played-slot[data-players="5"][data-pos="0"] { transform: translateX(-85px) translateY(30px); }
-  .played-slot[data-players="5"][data-pos="1"] { transform: translateX(-55px) translateY(-75px); }
-  .played-slot[data-players="5"][data-pos="2"] { transform: translateX(0px) translateY(-100px); }
-  .played-slot[data-players="5"][data-pos="3"] { transform: translateX(55px) translateY(-75px); }
-  .played-slot[data-players="5"][data-pos="4"] { transform: translateX(85px) translateY(30px); }
+  /* Position cards just inward from player piles */
+  .played-slot[data-seat="bottom"]     { transform: translateX(0px) translateY(-50px); }
+  .played-slot[data-seat="top"]        { transform: translateX(0px) translateY(50px); }
+  .played-slot[data-seat="left"]       { transform: translateX(50px) translateY(0px); }
+  .played-slot[data-seat="right"]      { transform: translateX(-50px) translateY(0px); }
+  .played-slot[data-seat="top-left"]   { transform: translateX(35px) translateY(35px); }
+  .played-slot[data-seat="top-right"]  { transform: translateX(-35px) translateY(35px); }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
@@ -858,28 +849,34 @@ function renderOpponents() {
 
 let lastTrickLength = 0;
 
-function seatDirection(playerIdx) {
-  // returns a fly-* class based on where the player sits relative to human
+function getSeatPosition(playerIdx) {
+  // returns seat position: 'bottom', 'top', 'left', 'right', 'top-left', 'top-right'
   const myIdx = view.myIdx;
   const n = view.players.length;
-  if (playerIdx === myIdx) return 'fly-bottom';
+  if (playerIdx === myIdx) return 'bottom';
   const oppIndices = [];
   for (let i = 1; i < n; i++) oppIndices.push((myIdx + i) % n);
   const pos = oppIndices.indexOf(playerIdx);
   const total = oppIndices.length;
-  // mirror the seat layout from renderOpponents
-  if (total === 1) return 'fly-top';
-  if (total === 2) return pos === 0 ? 'fly-top-left' : 'fly-top-right';
+  if (total === 1) return 'top';
+  if (total === 2) return pos === 0 ? 'top-left' : 'top-right';
   if (total === 3) {
-    if (pos === 0) return 'fly-left';
-    if (pos === 1) return 'fly-top';
-    return 'fly-right';
+    if (pos === 0) return 'left';
+    if (pos === 1) return 'top';
+    return 'right';
   }
   // 4 opponents
-  if (pos === 0) return 'fly-left';
-  if (pos === 1) return 'fly-top-left';
-  if (pos === 2) return 'fly-top-right';
-  return 'fly-right';
+  if (pos === 0) return 'left';
+  if (pos === 1) return 'top-left';
+  if (pos === 2) return 'top-right';
+  return 'right';
+}
+
+function seatDirection(playerIdx) {
+  // returns fly-* animation class based on seat position
+  const pos = getSeatPosition(playerIdx);
+  const map = { bottom: 'fly-bottom', top: 'fly-top', left: 'fly-left', right: 'fly-right', 'top-left': 'fly-top-left', 'top-right': 'fly-top-right' };
+  return map[pos] || 'fly-bottom';
 }
 
 function renderTrick() {
@@ -890,12 +887,10 @@ function renderTrick() {
   if (isNewCard) playSwoosh();
   lastTrickLength = newLength;
   center.innerHTML = '';
-  const numPlayers = view.players.length;
   s.currentTrick.forEach((entry, i) => {
     const slot = document.createElement('div');
     slot.className = 'played-slot' + (i === 0 ? ' led-card' : '');
-    slot.setAttribute('data-players', numPlayers);
-    slot.setAttribute('data-pos', i);
+    slot.setAttribute('data-seat', getSeatPosition(entry.playerIdx));
     const lbl = i === 0 ? `★ LEAD — ${view.players[entry.playerIdx]?.name||''}` : view.players[entry.playerIdx]?.name||'';
     slot.innerHTML = `<div class="slot-lbl">${lbl}</div>`;
     const cardEl = buildCard(entry.card, false);
