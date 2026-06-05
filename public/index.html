@@ -623,6 +623,7 @@ function sendLobbyChat() {
 
 socket.on('game_over', ({ players }) => {
   clearSession();
+  hideScores();
   const sorted = [...players].sort((a,b) => b.score - a.score);
   $('go-winner').textContent = sorted[0].name + ' Wins!';
   const tbl = $('go-table');
@@ -957,7 +958,7 @@ function showRoundScores() {
   buildScoreTable();
   const actions = $('score-actions');
   if (isLast) {
-    actions.innerHTML = '';
+    actions.innerHTML = `<button class="btn btn-sec" onclick="hideScores()">CLOSE</button>`;
   } else if (isHost) {
     actions.innerHTML = `<button class="btn" onclick="doNextRound()">NEXT ROUND</button>`;
   } else {
