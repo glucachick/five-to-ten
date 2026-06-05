@@ -19,10 +19,10 @@ const BOT_NAMES = ['Ace','Blackwood','Cutthroat','Duchess','Eddie'];
 const BOT_THINK_MS = 900;
 
 const BOT_DIFFICULTY = {
-  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false },
-  medium: { sims: 100, bidVariance: 0.5, playSmart: true,  master: false },
-  hard:   { sims: 300, bidVariance: 0.1, playSmart: true,  master: false },
-  master: { sims: 400, bidVariance: 0.05,playSmart: true,  master: true  },
+  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false, playNoise: 0.70 },
+  medium: { sims: 75,  bidVariance: 0.7, playSmart: true,  master: false, playNoise: 0.20 },
+  hard:   { sims: 200, bidVariance: 0.25,playSmart: true,  master: false, playNoise: 0.05 },
+  master: { sims: 600, bidVariance: 0.05,playSmart: true,  master: true,  playNoise: 0.0  },
 };
 const MAX_ROOMS = 20;              // total open rooms allowed at once
 const MAX_ROOMS_PER_IP = 2;        // one person can't hog all slots
@@ -197,17 +197,16 @@ function simPlaySmart(hand, trick, trump, bid) {
 
 function simPlayByProfile(hand, trick, trump, bid, profile) {
   const legal = getLegal(hand, trick);
-  if (profile === 'random') {
-    // Easy: pick any legal card at random
-    return legal[Math.floor(Math.random() * legal.length)];
-  }
-  if (profile === 'noisy') {
-    // Medium: smart play 75% of the time, random 25%
-    if (Math.random() < 0.25) return legal[Math.floor(Math.random() * legal.length)];
+  if (profile === 'random')       return legal[Math.floor(Math.random() * legal.length)];
+  if (profile === 'noisy-heavy') {
+    if (Math.random() < 0.40) return legal[Math.floor(Math.random() * legal.length)];
     return simPlaySmart(hand, trick, trump, bid);
   }
-  // 'smart' (Hard / Master / Human): fully rational
-  return simPlaySmart(hand, trick, trump, bid);
+  if (profile === 'noisy-light') {
+    if (Math.random() < 0.10) return legal[Math.floor(Math.random() * legal.length)];
+    return simPlaySmart(hand, trick, trump, bid);
+  }
+  return simPlaySmart(hand, trick, trump, bid); // 'smart'
 }
 
 // Map difficulty/type to a sim profile
@@ -215,8 +214,8 @@ function playerToProfile(player, botDifficulty) {
   if (!player.isBot) return 'smart'; // humans modeled as Hard
   switch (botDifficulty || 'medium') {
     case 'easy':   return 'random';
-    case 'medium': return 'noisy';
-    case 'hard':
+    case 'medium': return 'noisy-heavy';  // 40% random
+    case 'hard':   return 'noisy-light';  // 10% random
     case 'master':
     default:       return 'smart';
   }
@@ -277,8 +276,12 @@ function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200, 
 
   const expected = totalWon / numSims;
 
-  // If expected tricks are very low, consider a zero bid
-  if (expected < 0.8 && Math.random() < 0.55) return 0;
+  // Zero bid decision: scale probability with how weak the hand looks.
+  // At expected=0.0 → always bid 0. At expected=0.9 → 10% chance. Above 0.9 → never.
+  if (expected < 0.9) {
+    const zeroProbability = Math.max(0, (0.9 - expected) / 0.9);
+    if (Math.random() < zeroProbability) return 0;
+  }
 
   // Apply variance — easy bots are noisier, hard bots are precise
   const noise = (Math.random() * 2 - 1) * bidVariance;
@@ -686,7 +689,19 @@ function scheduleBotsIfNeeded(room) {
       scheduleBotsIfNeeded(room);
     } else if (room.phase === 'play') {
       const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
-      const card = diff.master ? chooseBotCardMaster(s, idx) : chooseBotCard(s, idx, diff.playSmart);
+      let card;
+      if (diff.master) {
+        card = chooseBotCardMaster(s, idx);
+      } else {
+        const smartCard = chooseBotCard(s, idx, diff.playSmart);
+        // apply play noise — occasionally make a random legal move
+        if (diff.playNoise > 0 && Math.random() < diff.playNoise) {
+          const legal = getLegal(s.hands[idx], s.currentTrick);
+          card = legal[Math.floor(Math.random() * legal.length)];
+        } else {
+          card = smartCard;
+        }
+      }
       const result = recordPlay(room, idx, card);
       broadcastViews(room, result);
       if (result === 'round_over') {

@@ -5,10 +5,10 @@ const RANK_VAL = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:11,Q:12,K:13,A:14};
 const ROUND_SEQUENCE = [5,6,7,8,9,10,10,9,8,7,6,5];
 
 const BOT_DIFFICULTY = {
-  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false },
-  medium: { sims: 100, bidVariance: 0.5, playSmart: true,  master: false },
-  hard:   { sims: 300, bidVariance: 0.1, playSmart: true,  master: false },
-  master: { sims: 400, bidVariance: 0.05,playSmart: true,  master: true  },
+  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false, playNoise: 0.70 },
+  medium: { sims: 75,  bidVariance: 0.7, playSmart: true,  master: false, playNoise: 0.20 },
+  hard:   { sims: 200, bidVariance: 0.25,playSmart: true,  master: false, playNoise: 0.05 },
+  master: { sims: 600, bidVariance: 0.05,playSmart: true,  master: true,  playNoise: 0.0  },
 };
 
 const PLAYERS = [
@@ -18,7 +18,7 @@ const PLAYERS = [
   { name: 'Master', difficulty: 'master' },
 ];
 const N = PLAYERS.length;
-const NUM_GAMES = 100;
+const NUM_GAMES = 500;
 
 function shuffle(arr) {
   const a = [...arr];
@@ -98,14 +98,16 @@ function simPlaySmart(hand,trick,trump,bid) {
 function simPlayByProfile(hand,trick,trump,bid,profile) {
   const legal=getLegal(hand,trick);
   if (profile==='random') return legal[Math.floor(Math.random()*legal.length)];
-  if (profile==='noisy') { if(Math.random()<0.25)return legal[Math.floor(Math.random()*legal.length)]; return simPlaySmart(hand,trick,trump,bid); }
+  if (profile==='noisy-heavy') { if(Math.random()<0.40)return legal[Math.floor(Math.random()*legal.length)]; return simPlaySmart(hand,trick,trump,bid); }
+  if (profile==='noisy-light') { if(Math.random()<0.10)return legal[Math.floor(Math.random()*legal.length)]; return simPlaySmart(hand,trick,trump,bid); }
   return simPlaySmart(hand,trick,trump,bid);
 }
 function playerToProfile(player) {
   if (!player.isBot) return 'smart';
   switch(player.difficulty) {
     case 'easy':   return 'random';
-    case 'medium': return 'noisy';
+    case 'medium': return 'noisy-heavy';
+    case 'hard':   return 'noisy-light';
     default:       return 'smart';
   }
 }
@@ -145,7 +147,10 @@ function botBid(hand,trump,totalTricks,numPlayers,trumpCard,numSims,bidVariance,
     total+=runOneSim(ah,trump,numPlayers,hs,profiles);
   }
   const exp=total/numSims;
-  if (exp<0.8&&Math.random()<0.55) return 0;
+  if (exp < 0.9) {
+    const zeroProb = Math.max(0, (0.9 - exp) / 0.9);
+    if (Math.random() < zeroProb) return 0;
+  }
   return Math.max(0,Math.min(Math.round(exp+(Math.random()*2-1)*bidVariance),totalTricks));
 }
 
@@ -215,7 +220,13 @@ function simulateGame() {
       for (let pos=0;pos<N;pos++) {
         const pIdx=(leader+pos)%N;
         const diff=BOT_DIFFICULTY[PLAYERS[pIdx].difficulty];
-        const card=chooseCard(currentHands[pIdx],trick,trump,bids[pIdx],tricksWon[pIdx],played,voids,pIdx,diff.master);
+        let card;
+        if (diff.playNoise > 0 && Math.random() < diff.playNoise) {
+          const legal=getLegal(currentHands[pIdx],trick);
+          card=legal[Math.floor(Math.random()*legal.length)];
+        } else {
+          card=chooseCard(currentHands[pIdx],trick,trump,bids[pIdx],tricksWon[pIdx],played,voids,pIdx,diff.master);
+        }
         currentHands[pIdx].splice(currentHands[pIdx].findIndex(c=>c.rank===card.rank&&c.suit===card.suit),1);
         // track voids
         if (trick.length>0){const led=trick[0].card.suit;if(card.suit!==led){if(!voids[led])voids[led]=[];if(!voids[led].includes(pIdx))voids[led].push(pIdx);}}
