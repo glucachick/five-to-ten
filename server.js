@@ -143,50 +143,84 @@ function bestLeadToDuck(hand, trump, played) {
   return pool.slice().sort((a, b) => rankVal(a.rank) - rankVal(b.rank))[0];
 }
 
-// ── BIDDING ─────────────────────────────────────────────
-// At bid time the AI only knows: its own hand + the trump card shown.
-// No information about other players' cards.
-function botBid(hand, trump, totalTricks) {
-  let estimate = 0;
-  const myTrumps = hand.filter(c => c.suit === trump)
-                       .sort((a, b) => rankVal(b.rank) - rankVal(a.rank));
-  const myTrumpCount = myTrumps.length;
+// ── MONTE CARLO BIDDING ──────────────────────────────────
+// At bid time the AI only knows: its own hand + which card is trump.
+// We simulate many random deals of the remaining cards to estimate
+// how many tricks this hand will win on average.
 
-  for (const card of hand) {
-    const rv = rankVal(card.rank);
-    if (card.suit === trump) {
-      // Trump cards: value based on rank
-      // Ace of trump is always a winner
-      if (rv === 14) estimate += 1.0;
-      else if (rv === 13) estimate += 0.85;
-      else if (rv === 12) estimate += 0.7;
-      else if (rv === 11) estimate += 0.55;
-      else if (rv === 10) estimate += 0.4;
-      else estimate += 0.2; // low trumps can win but unreliable
-    } else {
-      // Off-suit cards: aces and kings are strong but can be trumped.
-      // The fewer trumps I hold, the more likely opponents can trump my aces.
-      const trumpRisk = Math.max(0, 1 - myTrumpCount * 0.15); // more of my trumps = less risk they'll use theirs on my aces
-      if (rv === 14) estimate += 0.85 - trumpRisk * 0.25; // ace: ~0.6–0.85
-      else if (rv === 13) estimate += 0.55 - trumpRisk * 0.2; // king: ~0.35–0.55
-      else if (rv === 12) estimate += 0.25; // queen: possible but risky
+function simChooseCard(hand, trick, trump) {
+  const legal = getLegal(hand, trick);
+  if (trick.length === 0) {
+    // Lead: highest trump, else highest card
+    const trumps = legal.filter(c => c.suit === trump).sort((a,b) => rankVal(b.rank)-rankVal(a.rank));
+    return trumps.length ? trumps[0] : legal.slice().sort((a,b) => rankVal(b.rank)-rankVal(a.rank))[0];
+  }
+  // Find the current best card in the trick
+  let bestCard = trick[0].card;
+  for (const entry of trick) {
+    if (beats(entry.card, bestCard, trump)) bestCard = entry.card;
+  }
+  // Try to beat it with the minimum card possible
+  const canBeat = legal.filter(c => beats(c, bestCard, trump));
+  if (canBeat.length) return canBeat.sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
+  // Can't beat it — dump lowest card
+  return legal.slice().sort((a,b) => rankVal(a.rank)-rankVal(b.rank))[0];
+}
+
+function runOneSimulation(allHands, trump, numPlayers, handSize) {
+  const hands = allHands.map(h => h.map(c => ({...c}))); // deep copy
+  let myTricks = 0;
+  let leader = 0; // player 0 = the bidder (conservative: start leading)
+
+  for (let t = 0; t < handSize; t++) {
+    const trick = [];
+    for (let pos = 0; pos < numPlayers; pos++) {
+      const pIdx = (leader + pos) % numPlayers;
+      const card = simChooseCard(hands[pIdx], trick, trump);
+      const ci = hands[pIdx].findIndex(c => c.rank === card.rank && c.suit === card.suit);
+      hands[pIdx].splice(ci, 1);
+      trick.push({ playerIdx: pIdx, card });
+    }
+    const winner = trickWinner(trick, trump);
+    if (winner === 0) myTricks++;
+    leader = winner;
+  }
+  return myTricks;
+}
+
+function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200) {
+  // Build the unseen card pool: full deck minus my hand minus the shown trump card
+  const mySet = new Set(hand.map(c => c.rank + c.suit));
+  const trumpKey = trumpCard ? trumpCard.rank + trumpCard.suit : null;
+  const unseen = [];
+  for (const suit of SUITS) {
+    for (const rank of RANKS) {
+      const key = rank + suit;
+      if (!mySet.has(key) && key !== trumpKey) unseen.push({ suit, rank });
     }
   }
 
-  // Void suit bonus: if I have no cards in an off-suit,
-  // I can ruff opponents' leads in that suit (if I have trumps)
-  if (myTrumpCount > 0) {
-    const offSuits = SUITS.filter(s => s !== trump);
-    for (const suit of offSuits) {
-      if (hand.every(c => c.suit !== suit)) estimate += 0.35;
+  const handSize = hand.length;
+  const numOpponents = numPlayers - 1;
+  let totalWon = 0;
+
+  for (let sim = 0; sim < numSims; sim++) {
+    // Randomly deal handSize cards to each opponent from the unseen pool
+    const pool = shuffle([...unseen]);
+    const allHands = [hand]; // player 0 = bidder
+    for (let i = 0; i < numOpponents; i++) {
+      allHands.push(pool.slice(i * handSize, (i + 1) * handSize));
     }
+    totalWon += runOneSimulation(allHands, trump, numPlayers, handSize);
   }
 
-  // Zero bid: only when hand looks genuinely weak
-  if (estimate < 0.85 && Math.random() < 0.55) return 0;
+  const expected = totalWon / numSims;
 
-  // Small variance (±0.3) so AI isn't perfectly predictable
-  const bid = Math.round(estimate + (Math.random() * 0.6 - 0.3));
+  // If expected tricks are very low, consider a zero bid
+  if (expected < 0.8 && Math.random() < 0.55) return 0;
+
+  // Round to nearest integer with tiny variance so AI isn't perfectly predictable
+  const bid = Math.round(expected + (Math.random() * 0.4 - 0.2));
   return Math.max(0, Math.min(bid, totalTricks));
 }
 
@@ -476,7 +510,7 @@ function scheduleBotsIfNeeded(room) {
     if (!player || !player.isBot) return;
 
     if (room.phase === 'bid') {
-      const bid = botBid(s.hands[idx], s.trump, s.totalTricks);
+      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, room.players.length, s.trumpCard);
       recordBid(room, idx, bid);
       broadcastViews(room);
       scheduleBotsIfNeeded(room);
