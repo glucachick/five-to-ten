@@ -144,42 +144,48 @@ function bestLeadToDuck(hand, trump, played) {
 }
 
 // ── BIDDING ─────────────────────────────────────────────
-function botBid(hand, trump, totalTricks, played) {
-  played = played || new Set();
+// At bid time the AI only knows: its own hand + the trump card shown.
+// No information about other players' cards.
+function botBid(hand, trump, totalTricks) {
   let estimate = 0;
-
-  const myTrumps = hand.filter(c => c.suit === trump).sort((a, b) => rankVal(b.rank) - rankVal(a.rank));
-  const trumpRemaining = trumpsLeft(trump, played);
+  const myTrumps = hand.filter(c => c.suit === trump)
+                       .sort((a, b) => rankVal(b.rank) - rankVal(a.rank));
+  const myTrumpCount = myTrumps.length;
 
   for (const card of hand) {
-    if (isSureWinner(card, trump, played)) {
-      estimate += 1.0; // definite trick
-    } else if (card.suit === trump) {
-      const rv = rankVal(card.rank);
-      if (rv >= 12) estimate += 0.75;
-      else if (rv >= 10) estimate += 0.5;
-      else estimate += 0.25;
+    const rv = rankVal(card.rank);
+    if (card.suit === trump) {
+      // Trump cards: value based on rank
+      // Ace of trump is always a winner
+      if (rv === 14) estimate += 1.0;
+      else if (rv === 13) estimate += 0.85;
+      else if (rv === 12) estimate += 0.7;
+      else if (rv === 11) estimate += 0.55;
+      else if (rv === 10) estimate += 0.4;
+      else estimate += 0.2; // low trumps can win but unreliable
     } else {
-      const rv = rankVal(card.rank);
-      if (rv === 14 && trumpRemaining > 0) estimate += 0.6; // ace, trumpable
-      else if (rv === 14) estimate += 0.95;
-      else if (rv === 13 && trumpRemaining > 0) estimate += 0.35;
-      else if (rv === 13) estimate += 0.7;
+      // Off-suit cards: aces and kings are strong but can be trumped.
+      // The fewer trumps I hold, the more likely opponents can trump my aces.
+      const trumpRisk = Math.max(0, 1 - myTrumpCount * 0.15); // more of my trumps = less risk they'll use theirs on my aces
+      if (rv === 14) estimate += 0.85 - trumpRisk * 0.25; // ace: ~0.6–0.85
+      else if (rv === 13) estimate += 0.55 - trumpRisk * 0.2; // king: ~0.35–0.55
+      else if (rv === 12) estimate += 0.25; // queen: possible but risky
     }
   }
 
-  // Void suit bonus: can ruff opponents' leads
-  const offSuits = SUITS.filter(s => s !== trump);
-  for (const suit of offSuits) {
-    if (hand.every(c => c.suit !== suit) && myTrumps.length > 0) {
-      estimate += 0.4;
+  // Void suit bonus: if I have no cards in an off-suit,
+  // I can ruff opponents' leads in that suit (if I have trumps)
+  if (myTrumpCount > 0) {
+    const offSuits = SUITS.filter(s => s !== trump);
+    for (const suit of offSuits) {
+      if (hand.every(c => c.suit !== suit)) estimate += 0.35;
     }
   }
 
-  // Zero bid: only if hand looks genuinely weak
-  if (estimate < 0.9 && Math.random() < 0.55) return 0;
+  // Zero bid: only when hand looks genuinely weak
+  if (estimate < 0.85 && Math.random() < 0.55) return 0;
 
-  // Small random variance (±0.3) to avoid being predictable
+  // Small variance (±0.3) so AI isn't perfectly predictable
   const bid = Math.round(estimate + (Math.random() * 0.6 - 0.3));
   return Math.max(0, Math.min(bid, totalTricks));
 }
@@ -470,7 +476,7 @@ function scheduleBotsIfNeeded(room) {
     if (!player || !player.isBot) return;
 
     if (room.phase === 'bid') {
-      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, playedSet(s));
+      const bid = botBid(s.hands[idx], s.trump, s.totalTricks);
       recordBid(room, idx, bid);
       broadcastViews(room);
       scheduleBotsIfNeeded(room);
