@@ -78,8 +78,8 @@
   /* TABLE */
   #table-area { display: grid; grid-template-areas: "left top-s right" "left trick right"; grid-template-columns: 130px 1fr 130px; grid-template-rows: auto 1fr; overflow: hidden; }
   #seat-top { grid-area: top-s; display: flex; justify-content: space-evenly; align-items: flex-start; padding: 10px 20px 4px; }
-  #seat-left { grid-area: left; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding: 4px 2px; }
-  #seat-right { grid-area: right; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 4px 2px; }
+  #seat-left { grid-area: left; display: flex; flex-direction: column; justify-content: center; align-items: stretch; padding: 4px 2px; }
+  #seat-right { grid-area: right; display: flex; flex-direction: column; justify-content: center; align-items: stretch; padding: 4px 2px; }
 
   @media (max-width: 480px) {
     #table-area { grid-template-columns: 90px 1fr 90px; }
@@ -109,10 +109,11 @@
   .card-back { width: 32px; height: 46px; background: linear-gradient(135deg, #1a3a8a, #0d2060); border: 2px solid #c8b87a; border-radius: 4px; margin-left: -14px; box-shadow: 1px 1px 4px rgba(0,0,0,0.5); }
   .card-back:first-child { margin-left: 0; }
 
-  /* left/right seat opponents — same column layout as top, just vertical fan */
-  .opp-seat-side { display: flex; flex-direction: column; gap: 3px; width: 100%; }
-  #seat-left  .opp-seat-side { align-items: flex-end;   text-align: right;  }
-  #seat-right .opp-seat-side { align-items: flex-start; text-align: left;   }
+  /* left/right seat opponents — cards on outer edge, text on inner (center) side */
+  .opp-seat-side { display: flex; align-items: center; gap: 4px; width: 100%; }
+  #seat-left  .opp-seat-side { flex-direction: row;         } /* cards left (outer), text right (inner) */
+  #seat-right .opp-seat-side { flex-direction: row-reverse; } /* cards right (outer), text left (inner) */
+  .opp-side-info { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: #8aad8a; flex: 1; overflow: hidden; }
   .card-fan-vertical { display: flex; flex-direction: column; align-items: center; }
   .card-fan-vertical .card-back { margin-left: 0; margin-top: -30px; }
   .card-fan-vertical .card-back:first-child { margin-top: 0; }
@@ -175,6 +176,13 @@
   #score-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   #score-table th { color: var(--gold); padding: 6px 8px; border-bottom: 2px solid var(--gold-dark); text-align: center; }
   #score-table th.r { text-align: left; }
+  @media (max-width: 520px) {
+    #score-box { padding: 14px 6px; }
+    #score-table th:not(.r) { padding: 50px 2px 4px; position: relative; min-width: 28px; }
+    #score-table th:not(.r) .th-label { display: block; position: absolute; bottom: 8px; left: 50%; white-space: nowrap; transform: rotate(-45deg); transform-origin: left bottom; font-size: 10px; }
+    #score-table td { padding: 4px 3px; font-size: 11px; }
+    #score-table td.r { font-size: 10px; padding: 4px 4px; }
+  }
   #score-table td { padding: 5px 7px; border-bottom: 1px solid rgba(201,168,76,0.12); text-align: center; }
   #score-table td.r { text-align: left; color: #8aad8a; font-size: 11px; }
   #score-table tr.tot td { border-top: 2px solid var(--gold-dark); font-weight: bold; font-size: 14px; padding-top: 7px; }
@@ -235,6 +243,8 @@
   #chat-toggle { position: relative; }
   #chat-badge { position: absolute; top: -4px; right: -4px; background: #e74c3c; color: white; font-size: 10px; font-weight: bold; border-radius: 50%; width: 16px; height: 16px; display: none; align-items: center; justify-content: center; }
   #chat-badge.on { display: flex; }
+  @keyframes chat-flash { 0%,100% { background: linear-gradient(135deg,#4a4a4a,#2a2a2a); color: #f0e6c8; } 50% { background: linear-gradient(135deg,#c0392b,#922b21); color: white; } }
+  #chat-toggle.flashing { animation: chat-flash 0.7s ease-in-out infinite; }
 
   /* TOAST */
   #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.88); border: 1px solid var(--gold-dark); color: #f0e6c8; padding: 9px 20px; border-radius: 6px; font-size: 13px; z-index: 300; display: none; pointer-events: none; }
@@ -593,6 +603,7 @@ socket.on('chat_message', (msg) => {
     const badge = $('chat-badge');
     badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
     badge.classList.add('on');
+    $('chat-toggle').classList.add('flashing');
   }
 });
 
@@ -632,6 +643,7 @@ function toggleChat() {
   if (chatOpen) {
     unreadCount = 0;
     $('chat-badge').classList.remove('on');
+    $('chat-toggle').classList.remove('flashing');
     setTimeout(() => $('chat-input').focus(), 250);
     $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
   }
@@ -823,12 +835,14 @@ function renderOpponents() {
       const el = document.createElement('div');
       el.className = 'opp-seat-side';
       el.innerHTML = `
-        <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
-        <span style="font-size:9px;color:#8aad8a;white-space:nowrap">${p.isBot?'bot: '+diffLabel:'human'}</span>
         <div class="card-fan-vertical">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
-        <div style="font-size:11px;color:var(--gold)">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
-        <div class="opp-info">Tricks: ${s.tricksWon[i]}</div>
-        <div class="opp-info">Score: ${p.score}</div>
+        <div class="opp-side-info">
+          <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
+          <div style="font-size:9px">${p.isBot?'bot: '+diffLabel:'human'}</div>
+          <div style="color:var(--gold);font-size:10px">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
+          <div>Tricks: ${s.tricksWon[i]}</div>
+          <div>Score: ${p.score}</div>
+        </div>
       `;
       container.appendChild(el);
     }
@@ -1060,7 +1074,7 @@ function buildScoreTable() {
 
   head.innerHTML = '<th class="r">Round</th>' + players.map(p => {
     const lead = p.score === maxScore;
-    return `<th class="${lead?'lc':''}">${lead?'<span class="crown">★</span>':''}${p.name}</th>`;
+    return `<th class="${lead?'lc':''}"><span class="th-label">${lead?'★ ':''}${p.name}</span></th>`;
   }).join('');
 
   body.innerHTML = '';
