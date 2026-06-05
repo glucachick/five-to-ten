@@ -477,9 +477,12 @@ socket.on('room_update', (v) => {
   if (v.phase === 'lobby') renderLobby();
 });
 
-// auto-rejoin on reconnect if we were in a game/lobby
+// auto-rejoin on reconnect if we were in an active game/lobby
 socket.on('connect', () => {
   if (!roomCode || !myName) return; // not in a game yet
+  // only auto-rejoin if we're currently showing a game or lobby screen
+  const onGameScreen = document.querySelector('#screen-game.active, #screen-lobby.active');
+  if (!onGameScreen) return;
   socket.emit('request_room_state', { code: roomCode, name: myName });
 });
 
@@ -625,7 +628,15 @@ socket.on('game_over', ({ players }) => {
   showScreen('gameover');
 });
 
-socket.on('error', (msg) => { toast(msg, 3500); });
+socket.on('error', (msg) => {
+  toast(msg, 3500);
+  // if rejoin failed, clear the stale session so the button disappears
+  if (msg.includes('no longer') || msg.includes('not found') || msg.includes('Room')) {
+    clearSession();
+    const btn = $('btn-rejoin');
+    if (btn) btn.style.display = 'none';
+  }
+});
 
 // ── LOBBY ─────────────────────────────────────────────────
 function doCreate() {
