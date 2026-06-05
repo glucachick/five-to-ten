@@ -63,7 +63,8 @@
 
   /* GAME LAYOUT */
   #screen-game { padding: 0; justify-content: flex-start; align-items: stretch; background: radial-gradient(ellipse at center, var(--felt) 30%, var(--felt-dark) 100%); }
-  #game-wrap { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; overflow: hidden; }
+  #game-wrap { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; overflow: hidden; position: relative; }
+  #trick-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 
   #top-bar { display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.5); border-bottom: 2px solid var(--gold-dark); padding: 7px 14px; gap: 10px; flex-wrap: wrap; }
   #round-info { color: var(--gold); font-size: 14px; font-weight: bold; }
@@ -93,18 +94,12 @@
     .card-fan-vertical .card-back { margin-top: -22px; }
   }
   #trick-area { grid-area: trick; display: flex; align-items: center; justify-content: center; }
-  .trick-center { position: relative; width: 280px; height: 280px; display: flex; align-items: center; justify-content: center; }
-  .played-slot { position: absolute; width: 55px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; }
+  .trick-center { position: relative; width: 100%; height: 100%; }
+  /* played cards live in #trick-layer, positioned via JS (left/top = card center) */
+  .played-slot { position: absolute; width: 55px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; transform: translate(-50%, -50%); }
   .played-slot .slot-lbl { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
-  /* Cards in center, positioned radially to show who played each */
-  .played-slot[data-seat="bottom"]     { bottom: 30px; left: 50%; transform: translateX(-50%); }
-  .played-slot[data-seat="top"]        { top: 30px; left: 50%; transform: translateX(-50%); }
-  .played-slot[data-seat="left"]       { top: 50%; left: 30px; transform: translateY(-50%); }
-  .played-slot[data-seat="right"]      { top: 50%; right: 30px; transform: translateY(-50%); }
-  .played-slot[data-seat="top-left"]   { top: 50px; left: 50px; }
-  .played-slot[data-seat="top-right"]  { top: 50px; right: 50px; }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
@@ -353,6 +348,7 @@
       </div>
       <div id="player-hand"></div>
     </div>
+    <div id="trick-layer"></div>
   </div>
 </div>
 
@@ -779,8 +775,8 @@ function renderGame() {
   }
 
   renderOpponents();
-  renderTrick();
   renderHand();
+  renderTrick();
   renderMyStats();
 }
 
@@ -816,7 +812,7 @@ function renderOpponents() {
       <div class="opp-sublabel" style="color:var(--gold)">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
       <div class="opp-sublabel">Tricks: ${s.tricksWon[i]}</div>
       <div class="opp-sublabel">Score: ${p.score}</div>
-      <div class="${fanClass}">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
+      <div class="${fanClass}" data-pile="${i}">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
     `;
   }
 
@@ -879,27 +875,62 @@ function seatDirection(playerIdx) {
   return map[pos] || 'fly-bottom';
 }
 
+// reposition played cards on resize/orientation change
+(function(){
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { if (view && view.state && view.phase === 'play') renderTrick(); }, 120);
+  });
+})();
+
+// Find the on-screen pile element for a given player
+function getPileEl(playerIdx) {
+  if (playerIdx === view.myIdx) return $('player-hand');
+  return document.querySelector(`[data-pile="${playerIdx}"]`);
+}
+
 function renderTrick() {
   const s = view.state;
-  const center = $('trick-center');
+  const layer = $('trick-layer');
   const newLength = s.currentTrick.length;
   const isNewCard = newLength > lastTrickLength;
   if (isNewCard) playSwoosh();
   lastTrickLength = newLength;
-  center.innerHTML = '';
+  if (!layer) return;
+  layer.innerHTML = '';
+  $('trick-center').innerHTML = '';
+
+  const wrapRect = $('game-wrap').getBoundingClientRect();
+  // table center = center of the trick-area cell
+  const taRect = $('trick-area').getBoundingClientRect();
+  const centerX = taRect.left + taRect.width / 2 - wrapRect.left;
+  const centerY = taRect.top + taRect.height / 2 - wrapRect.top;
+
   s.currentTrick.forEach((entry, i) => {
     const slot = document.createElement('div');
     slot.className = 'played-slot' + (i === 0 ? ' led-card' : '');
-    slot.setAttribute('data-seat', getSeatPosition(entry.playerIdx));
     const lbl = i === 0 ? `★ LEAD — ${view.players[entry.playerIdx]?.name||''}` : view.players[entry.playerIdx]?.name||'';
     slot.innerHTML = `<div class="slot-lbl">${lbl}</div>`;
     const cardEl = buildCard(entry.card, false);
-    // animate only the newest card
-    if (isNewCard && i === newLength - 1) {
-      cardEl.classList.add(seatDirection(entry.playerIdx));
-    }
+    if (isNewCard && i === newLength - 1) cardEl.classList.add(seatDirection(entry.playerIdx));
     slot.appendChild(cardEl);
-    center.appendChild(slot);
+
+    // Measure the player's pile and place the card just inward (toward table center)
+    const pile = getPileEl(entry.playerIdx);
+    let x = centerX, y = centerY;
+    if (pile) {
+      const pr = pile.getBoundingClientRect();
+      const pileX = pr.left + pr.width / 2 - wrapRect.left;
+      const pileY = pr.top + pr.height / 2 - wrapRect.top;
+      // 75% of the way from pile toward center = close to pile, nudged in
+      const t = 0.28;
+      x = pileX + (centerX - pileX) * t;
+      y = pileY + (centerY - pileY) * t;
+    }
+    slot.style.left = x + 'px';
+    slot.style.top = y + 'px';
+    layer.appendChild(slot);
   });
 }
 
