@@ -205,7 +205,7 @@
   .fly-top-right { animation: fly-from-top-right 0.35s cubic-bezier(0.2,0.8,0.4,1) both; }
 
   /* TRICK FLASH */
-  #trick-flash { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.88); border: 2px solid var(--gold); border-radius: 10px; padding: 14px 26px; font-size: 17px; color: var(--gold); z-index: 200; display: none; pointer-events: none; text-align: center; }
+  #trick-flash { position: fixed; top: 78%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.55); border: 2px solid var(--gold); border-radius: 10px; padding: 10px 22px; font-size: 17px; color: var(--gold); z-index: 200; display: none; pointer-events: none; text-align: center; }
 
   /* GAME OVER */
   #screen-gameover { background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%); }
@@ -933,8 +933,8 @@ function renderTrick() {
       dx /= dist; dy /= dist; // unit direction toward pile
       // radius must exceed card size so cluster never overlaps; bigger Y to clear tall cards
       const mobile = window.innerWidth <= 480;
-      const rx = mobile ? 58 : 82;
-      const ry = mobile ? 64 : 90;
+      const rx = mobile ? 70 : 100;
+      const ry = mobile ? 76 : 108;
       x = centerX + dx * rx;
       y = centerY + dy * ry;
     }
