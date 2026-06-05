@@ -100,6 +100,9 @@
   .played-slot .slot-lbl { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
+  /* smaller cards in the trick area so they cluster tightly without overlap */
+  .played-slot .card { width: 50px; height: 70px; }
+  @media (max-width: 480px) { .played-slot .card { width: 40px; height: 56px; } .played-slot { width: 44px; } }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
@@ -928,9 +931,12 @@ function renderTrick() {
       let dx = pileX - centerX, dy = pileY - centerY;
       const dist = Math.hypot(dx, dy) || 1;
       dx /= dist; dy /= dist; // unit direction toward pile
-      const radius = window.innerWidth <= 480 ? 46 : 64; // fixed cluster radius
-      x = centerX + dx * radius;
-      y = centerY + dy * radius;
+      // radius must exceed card size so cluster never overlaps; bigger Y to clear tall cards
+      const mobile = window.innerWidth <= 480;
+      const rx = mobile ? 58 : 82;
+      const ry = mobile ? 64 : 90;
+      x = centerX + dx * rx;
+      y = centerY + dy * ry;
     }
     slot.style.left = x + 'px';
     slot.style.top = y + 'px';
