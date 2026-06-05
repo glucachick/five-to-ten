@@ -530,6 +530,9 @@ socket.on('game_update', async (v) => {
   view = v;
   renderGame();
 
+  // close score panel whenever new game state arrives (e.g. host advanced to next round)
+  hideScores();
+
   if (v.state && v.phase === 'bid' && v.state.currentTurnIdx === v.myIdx) {
     showBidPanel();
   } else {
@@ -958,7 +961,8 @@ function showRoundScores() {
   } else if (isHost) {
     actions.innerHTML = `<button class="btn" onclick="doNextRound()">NEXT ROUND</button>`;
   } else {
-    actions.innerHTML = `<div class="wait-msg">Waiting for host to start next round...</div>`;
+    actions.innerHTML = `<div class="wait-msg">Waiting for host to start next round...</div>
+      <button class="btn btn-sec btn-sm" onclick="hideScores()" style="margin-top:10px">CLOSE</button>`;
   }
   $('score-panel').classList.add('on');
 }
