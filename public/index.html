@@ -78,8 +78,8 @@
   /* TABLE */
   #table-area { display: grid; grid-template-areas: "left top-s right" "left trick right"; grid-template-columns: 120px 1fr 120px; grid-template-rows: auto 1fr; overflow: hidden; }
   #seat-top { grid-area: top-s; display: flex; justify-content: space-evenly; align-items: flex-start; padding: 10px 20px 4px; }
-  #seat-left { grid-area: left; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 4px 2px; }
-  #seat-right { grid-area: right; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding: 4px 2px; }
+  #seat-left { grid-area: left; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 4px 2px; }
+  #seat-right { grid-area: right; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 4px 2px; }
 
   @media (max-width: 480px) {
     #table-area { grid-template-columns: 90px 1fr 90px; }
@@ -109,18 +109,13 @@
   .card-back { width: 32px; height: 46px; background: linear-gradient(135deg, #1a3a8a, #0d2060); border: 2px solid #c8b87a; border-radius: 4px; margin-left: -14px; box-shadow: 1px 1px 4px rgba(0,0,0,0.5); }
   .card-back:first-child { margin-left: 0; }
 
-  /* left/right seat opponents — horizontal layout with vertical fan + rotated info */
-  .opp-seat-side { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+  /* left/right seat opponents — same column layout as top, just vertical fan */
+  .opp-seat-side { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
   .card-fan-vertical { display: flex; flex-direction: column; align-items: center; }
   .card-fan-vertical .card-back { margin-left: 0; margin-top: -30px; }
   .card-fan-vertical .card-back:first-child { margin-top: 0; }
-  .opp-info-side { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; color: #8aad8a; width: 80px; text-align: center; }
-  .opp-info-side .opp-name { font-size: 11px; color: #c8b87a; text-align: center; }
-  .opp-info-side .opp-name.active { color: #ffe066; font-weight: bold; }
-  /* left seat: info on the right of cards (toward center) */
-  .seat-left-player { flex-direction: row; }
-  /* right seat: info on the left of cards (toward center) */
-  .seat-right-player { flex-direction: row-reverse; }
+  /* no-wrap names for all seats */
+  .opp-name { font-size: 11px; color: #c8b87a; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 115px; }
 
   /* PLAYER HAND */
   #player-area { padding: 8px 14px 12px; background: rgba(0,0,0,0.25); border-top: 1px solid rgba(201,168,76,0.2); }
@@ -817,31 +812,28 @@ function renderOpponents() {
     }
   };
 
-  const placeSide = (containerId, indices, sideClass) => {
+  const placeSide = (containerId, indices) => {
     const container = $(containerId);
     for (const i of indices) {
       const p = view.players[i];
       const handSize = s.handSizes[i] || 0;
       const isActive = s.currentTurnIdx === i;
       const el = document.createElement('div');
-      el.className = `opp-seat-side ${sideClass}`;
+      el.className = 'opp-seat-side';
       el.innerHTML = `
+        <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
+        <span style="font-size:9px;color:#8aad8a;white-space:nowrap">${p.isBot?'bot: '+diffLabel:'human'}</span>
         <div class="card-fan-vertical">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
-        <div class="opp-info-side">
-          <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
-          <span style="font-size:9px;color:#8aad8a">${p.isBot?'bot: '+diffLabel:'human'}</span>
-          <span style="color:var(--gold)">${s.bids[i]!==null?'Bid:'+s.bids[i]:''}</span>
-          <span>T:${s.tricksWon[i]}</span>
-          <span>${p.score}pts</span>
-        </div>
+        <div style="font-size:11px;color:var(--gold);white-space:nowrap">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
+        <div class="opp-info" style="white-space:nowrap">T:${s.tricksWon[i]} | ${p.score}pts</div>
       `;
       container.appendChild(el);
     }
   };
 
   placeTop(topIdx);
-  placeSide('seat-left',  leftIdx,  'seat-left-player');
-  placeSide('seat-right', rightIdx, 'seat-right-player');
+  placeSide('seat-left',  leftIdx);
+  placeSide('seat-right', rightIdx);
 }
 
 let lastTrickLength = 0;
