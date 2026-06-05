@@ -101,9 +101,9 @@
   .played-slot .slot-lbl { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 2px; font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; pointer-events: none; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
-  /* full-size, readable cards in the trick area */
-  .played-slot .card { width: 68px; height: 95px; }
-  @media (max-width: 480px) { .played-slot .card { width: 48px; height: 67px; } }
+  /* larger, readable cards in the trick area (~40% bigger than hand cards) */
+  .played-slot .card { width: 95px; height: 133px; }
+  @media (max-width: 480px) { .played-slot .card { width: 67px; height: 94px; } }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
