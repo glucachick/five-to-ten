@@ -92,19 +92,19 @@
     .card-back { width: 22px; height: 32px; }
     .card-fan-vertical .card-back { margin-top: -22px; }
   }
-  #trick-area { grid-area: trick; position: relative; display: flex; align-items: center; justify-content: center; }
-  .trick-center { position: relative; width: 220px; height: 220px; }
-  .played-slot { position: absolute; width: 55px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; left: 110px; top: 110px; }
+  #trick-area { grid-area: trick; position: relative; display: grid; align-items: center; justify-content: center; }
+  .trick-center { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; max-width: 420px; }
+  .played-slot { position: absolute; width: 55px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; }
   .played-slot .slot-lbl { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
-  /* Position cards directly on player piles (bottom, top, left, right edges) */
-  .played-slot[data-seat="bottom"]     { transform: translateX(0px) translateY(120px); }
-  .played-slot[data-seat="top"]        { transform: translateX(0px) translateY(-120px); }
-  .played-slot[data-seat="left"]       { transform: translateX(-120px) translateY(0px); }
-  .played-slot[data-seat="right"]      { transform: translateX(120px) translateY(0px); }
-  .played-slot[data-seat="top-left"]   { transform: translateX(-90px) translateY(-90px); }
-  .played-slot[data-seat="top-right"]  { transform: translateX(90px) translateY(-90px); }
+  /* Position cards on player piles - absolute positioning within trick-area */
+  .played-slot[data-seat="bottom"]     { bottom: 8px; left: 50%; transform: translateX(-50%); }
+  .played-slot[data-seat="top"]        { top: 8px; left: 50%; transform: translateX(-50%); }
+  .played-slot[data-seat="left"]       { top: 50%; left: 8px; transform: translateY(-50%); }
+  .played-slot[data-seat="right"]      { top: 50%; right: 8px; transform: translateY(-50%); }
+  .played-slot[data-seat="top-left"]   { top: 8px; left: 8px; }
+  .played-slot[data-seat="top-right"]  { top: 8px; right: 8px; }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
