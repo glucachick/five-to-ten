@@ -99,26 +99,19 @@
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
 
-  /* OPPONENT SEAT */
-  /* top seat opponents — horizontal layout */
-  .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 110px; }
-  .opp-name { font-size: 11px; color: #c8b87a; text-align: center; }
+  /* OPPONENT SEATS — all have info above, cards below */
+  .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
+  .opp-seat-side { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; }
+  .opp-name { font-size: 11px; color: #c8b87a; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 115px; }
   .opp-name.active { color: #ffe066; font-weight: bold; }
+  .opp-sublabel { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
   .opp-info { font-size: 10px; color: #8aad8a; text-align: center; }
   .card-fan { display: flex; flex-direction: row; }
   .card-back { width: 32px; height: 46px; background: linear-gradient(135deg, #1a3a8a, #0d2060); border: 2px solid #c8b87a; border-radius: 4px; margin-left: -14px; box-shadow: 1px 1px 4px rgba(0,0,0,0.5); }
   .card-back:first-child { margin-left: 0; }
-
-  /* left/right seat opponents — cards on outer edge, text on inner (center) side */
-  .opp-seat-side { display: flex; align-items: center; gap: 4px; width: 100%; }
-  #seat-left  .opp-seat-side { flex-direction: row;         } /* cards left (outer), text right (inner) */
-  #seat-right .opp-seat-side { flex-direction: row-reverse; } /* cards right (outer), text left (inner) */
-  .opp-side-info { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: #8aad8a; flex: 1; overflow: hidden; }
   .card-fan-vertical { display: flex; flex-direction: column; align-items: center; }
   .card-fan-vertical .card-back { margin-left: 0; margin-top: -30px; }
   .card-fan-vertical .card-back:first-child { margin-top: 0; }
-  /* no-wrap names for all seats */
-  .opp-name { font-size: 11px; color: #c8b87a; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 115px; }
 
   /* PLAYER HAND */
   #player-area { padding: 8px 14px 12px; background: rgba(0,0,0,0.25); border-top: 1px solid rgba(201,168,76,0.2); }
@@ -808,20 +801,25 @@ function renderOpponents() {
     return `${p.name} <span style="font-size:9px;color:#8aad8a">(bot: ${diffLabel})</span>`;
   }
 
+  function oppHTML(p, i, handSize, fanClass) {
+    const isActive = s.currentTurnIdx === i;
+    return `
+      <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
+      <div class="opp-sublabel">${p.isBot?'bot: '+diffLabel:'human'}</div>
+      <div class="opp-sublabel" style="color:var(--gold)">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
+      <div class="opp-sublabel">Tricks: ${s.tricksWon[i]}</div>
+      <div class="opp-sublabel">Score: ${p.score}</div>
+      <div class="${fanClass}">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
+    `;
+  }
+
   const placeTop = (indices) => {
     const container = $('seat-top');
     for (const i of indices) {
       const p = view.players[i];
-      const handSize = s.handSizes[i] || 0;
-      const isActive = s.currentTurnIdx === i;
       const el = document.createElement('div');
       el.className = 'opp-seat';
-      el.innerHTML = `
-        <div class="opp-name${isActive?' active':''}">${playerLabel(p)}${s.dealerIdx===i?' ♦':''}</div>
-        <div class="card-fan">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
-        <div style="font-size:11px;color:var(--gold)">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
-        <div class="opp-info">Tricks: ${s.tricksWon[i]} | Score: ${p.score}</div>
-      `;
+      el.innerHTML = oppHTML(p, i, s.handSizes[i]||0, 'card-fan');
       container.appendChild(el);
     }
   };
@@ -830,20 +828,9 @@ function renderOpponents() {
     const container = $(containerId);
     for (const i of indices) {
       const p = view.players[i];
-      const handSize = s.handSizes[i] || 0;
-      const isActive = s.currentTurnIdx === i;
       const el = document.createElement('div');
       el.className = 'opp-seat-side';
-      el.innerHTML = `
-        <div class="card-fan-vertical">${'<div class="card-back"></div>'.repeat(Math.max(0,handSize))}</div>
-        <div class="opp-side-info">
-          <div class="opp-name${isActive?' active':''}">${p.name}${s.dealerIdx===i?' ♦':''}</div>
-          <div style="font-size:9px">${p.isBot?'bot: '+diffLabel:'human'}</div>
-          <div style="color:var(--gold);font-size:10px">${s.bids[i]!==null?'Bid: '+s.bids[i]:''}</div>
-          <div>Tricks: ${s.tricksWon[i]}</div>
-          <div>Score: ${p.score}</div>
-        </div>
-      `;
+      el.innerHTML = oppHTML(p, i, s.handSizes[i]||0, 'card-fan-vertical');
       container.appendChild(el);
     }
   };
