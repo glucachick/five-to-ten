@@ -95,14 +95,15 @@
   }
   #trick-area { grid-area: trick; display: flex; align-items: center; justify-content: center; }
   .trick-center { position: relative; width: 100%; height: 100%; }
-  /* played cards live in #trick-layer, positioned via JS (left/top = card center) */
-  .played-slot { position: absolute; width: 55px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; transform: translate(-50%, -50%); }
-  .played-slot .slot-lbl { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
+  /* played cards live in #trick-layer; JS sets left/top = card CENTER */
+  .played-slot { position: absolute; transform: translate(-50%, -50%); }
+  /* name label floats above the card as an overlay so it doesn't shift the card box */
+  .played-slot .slot-lbl { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 2px; font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; pointer-events: none; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
-  /* smaller cards in the trick area so they cluster tightly without overlap */
-  .played-slot .card { width: 50px; height: 70px; }
-  @media (max-width: 480px) { .played-slot .card { width: 40px; height: 56px; } .played-slot { width: 44px; } }
+  /* full-size, readable cards in the trick area */
+  .played-slot .card { width: 68px; height: 95px; }
+  @media (max-width: 480px) { .played-slot .card { width: 48px; height: 67px; } }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
@@ -887,10 +888,17 @@ function seatDirection(playerIdx) {
   });
 })();
 
-// Find the on-screen pile element for a given player
-function getPileEl(playerIdx) {
-  if (playerIdx === view.myIdx) return $('player-hand');
-  return document.querySelector(`[data-pile="${playerIdx}"]`);
+// Centroid offset (in units of card width W and height H) from table center,
+// keyed by player count then seat. Produces edge-to-edge polygons (see ASCII spec).
+function trickOffset(numPlayers, seat, W, H) {
+  const T = {
+    2: { top:[0,-H/2], bottom:[0,H/2] },
+    3: { 'top-left':[-W/2,-H/2], 'top-right':[W/2,-H/2], bottom:[0,H/2] },
+    4: { top:[0,-H/2], bottom:[0,H/2], left:[-W,0], right:[W,0] },
+    5: { 'top-left':[-W/2,-H], 'top-right':[W/2,-H], left:[-W/2,0], right:[W/2,0], bottom:[0,H] },
+  };
+  const map = T[numPlayers] || T[5];
+  return map[seat] || [0,0];
 }
 
 function renderTrick() {
@@ -903,13 +911,16 @@ function renderTrick() {
   if (!layer) return;
   layer.innerHTML = '';
   $('trick-center').innerHTML = '';
+  if (!s.currentTrick.length) return;
 
   const wrapRect = $('game-wrap').getBoundingClientRect();
-  // table center = center of the trick-area cell
   const taRect = $('trick-area').getBoundingClientRect();
   const centerX = taRect.left + taRect.width / 2 - wrapRect.left;
   const centerY = taRect.top + taRect.height / 2 - wrapRect.top;
+  const numPlayers = view.players.length;
 
+  // Build all slots first so we can measure a real rendered card's W and H.
+  const slots = [];
   s.currentTrick.forEach((entry, i) => {
     const slot = document.createElement('div');
     slot.className = 'played-slot' + (i === 0 ? ' led-card' : '');
@@ -918,30 +929,21 @@ function renderTrick() {
     const cardEl = buildCard(entry.card, false);
     if (isNewCard && i === newLength - 1) cardEl.classList.add(seatDirection(entry.playerIdx));
     slot.appendChild(cardEl);
-
-    // Place card at a FIXED radius from center, in the direction of the player's pile.
-    // This keeps cards tightly clustered in the middle on any screen size, while
-    // still pointing toward whoever played them.
-    const pile = getPileEl(entry.playerIdx);
-    let x = centerX, y = centerY;
-    if (pile) {
-      const pr = pile.getBoundingClientRect();
-      const pileX = pr.left + pr.width / 2 - wrapRect.left;
-      const pileY = pr.top + pr.height / 2 - wrapRect.top;
-      let dx = pileX - centerX, dy = pileY - centerY;
-      const dist = Math.hypot(dx, dy) || 1;
-      dx /= dist; dy /= dist; // unit direction toward pile
-      // radius must exceed card size so cluster never overlaps; bigger Y to clear tall cards
-      const mobile = window.innerWidth <= 480;
-      const rx = mobile ? 70 : 100;
-      const ry = mobile ? 76 : 108;
-      x = centerX + dx * rx;
-      y = centerY + dy * ry;
-    }
-    slot.style.left = x + 'px';
-    slot.style.top = y + 'px';
     layer.appendChild(slot);
+    slots.push({ slot, cardEl, playerIdx: entry.playerIdx });
   });
+
+  // Measure the actual rendered card size (works for desktop or mobile CSS).
+  const cr = slots[0].cardEl.getBoundingClientRect();
+  const W = cr.width, H = cr.height;
+
+  // Position each card's CENTER at center + its polygon offset.
+  for (const { slot, playerIdx } of slots) {
+    const seat = getSeatPosition(playerIdx);
+    const [ox, oy] = trickOffset(numPlayers, seat, W, H);
+    slot.style.left = (centerX + ox) + 'px';
+    slot.style.top  = (centerY + oy) + 'px';
+  }
 }
 
 // delegated hand click — set once, never removed
