@@ -916,17 +916,21 @@ function renderTrick() {
     if (isNewCard && i === newLength - 1) cardEl.classList.add(seatDirection(entry.playerIdx));
     slot.appendChild(cardEl);
 
-    // Measure the player's pile and place the card just inward (toward table center)
+    // Place card at a FIXED radius from center, in the direction of the player's pile.
+    // This keeps cards tightly clustered in the middle on any screen size, while
+    // still pointing toward whoever played them.
     const pile = getPileEl(entry.playerIdx);
     let x = centerX, y = centerY;
     if (pile) {
       const pr = pile.getBoundingClientRect();
       const pileX = pr.left + pr.width / 2 - wrapRect.left;
       const pileY = pr.top + pr.height / 2 - wrapRect.top;
-      // fraction of the way from pile toward center (higher = closer to middle)
-      const t = 0.48;
-      x = pileX + (centerX - pileX) * t;
-      y = pileY + (centerY - pileY) * t;
+      let dx = pileX - centerX, dy = pileY - centerY;
+      const dist = Math.hypot(dx, dy) || 1;
+      dx /= dist; dy /= dist; // unit direction toward pile
+      const radius = window.innerWidth <= 480 ? 46 : 64; // fixed cluster radius
+      x = centerX + dx * radius;
+      y = centerY + dy * radius;
     }
     slot.style.left = x + 'px';
     slot.style.top = y + 'px';
