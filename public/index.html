@@ -98,13 +98,13 @@
   .played-slot .slot-lbl { font-size: 9px; color: #8aad8a; text-align: center; white-space: nowrap; }
   .played-slot.led-card .slot-lbl { color: var(--gold); font-weight: bold; }
   .played-slot.led-card .card { box-shadow: 0 0 0 2px var(--gold), 2px 3px 8px rgba(0,0,0,0.5); }
-  /* Position cards very close to (almost touching) player piles */
-  .played-slot[data-seat="bottom"]     { transform: translateX(0px) translateY(55px); }
-  .played-slot[data-seat="top"]        { transform: translateX(0px) translateY(-55px); }
-  .played-slot[data-seat="left"]       { transform: translateX(-55px) translateY(0px); }
-  .played-slot[data-seat="right"]      { transform: translateX(55px) translateY(0px); }
-  .played-slot[data-seat="top-left"]   { transform: translateX(-40px) translateY(-40px); }
-  .played-slot[data-seat="top-right"]  { transform: translateX(40px) translateY(-40px); }
+  /* Position cards directly on player piles (bottom, top, left, right edges) */
+  .played-slot[data-seat="bottom"]     { transform: translateX(0px) translateY(120px); }
+  .played-slot[data-seat="top"]        { transform: translateX(0px) translateY(-120px); }
+  .played-slot[data-seat="left"]       { transform: translateX(-120px) translateY(0px); }
+  .played-slot[data-seat="right"]      { transform: translateX(120px) translateY(0px); }
+  .played-slot[data-seat="top-left"]   { transform: translateX(-90px) translateY(-90px); }
+  .played-slot[data-seat="top-right"]  { transform: translateX(90px) translateY(-90px); }
 
   /* OPPONENT SEATS — all have info above, cards below */
   .opp-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 110px; }
