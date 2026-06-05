@@ -7,7 +7,7 @@ const ROUND_SEQUENCE = [5,6,7,8,9,10,10,9,8,7,6,5];
 const BOT_DIFFICULTY = {
   easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false, playNoise: 0.70 },
   medium: { sims: 75,  bidVariance: 0.7, playSmart: true,  master: false, playNoise: 0.20 },
-  hard:   { sims: 200, bidVariance: 0.25,playSmart: true,  master: false, playNoise: 0.05 },
+  hard:   { sims: 200, bidVariance: 0.35,playSmart: true,  master: false, playNoise: 0.12 },
   master: { sims: 600, bidVariance: 0.05,playSmart: true,  master: true,  playNoise: 0.0  },
 };
 

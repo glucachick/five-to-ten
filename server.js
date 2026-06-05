@@ -22,7 +22,7 @@ const BOT_DIFFICULTY = {
   easy:   { sims: 0,   bidVariance: 1.5, playSmart: false, master: false, playNoise: 0.70 },
   medium: { sims: 75,  bidVariance: 0.7, playSmart: true,  master: false, playNoise: 0.20 },
   hard:   { sims: 200, bidVariance: 0.25,playSmart: true,  master: false, playNoise: 0.05 },
-  master: { sims: 600, bidVariance: 0.05,playSmart: true,  master: true,  playNoise: 0.0  },
+  master: { sims: 600, bidVariance: 0.05,playSmart: true,  master: true,  playNoise: 0.0, displayName: 'STEVIL' },
 };
 const MAX_ROOMS = 20;              // total open rooms allowed at once
 const MAX_ROOMS_PER_IP = 2;        // one person can't hog all slots
