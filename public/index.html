@@ -264,6 +264,12 @@
       <span id="bot-count-lbl">0 bots</span>
       <button class="btn-bot" id="btn-add-bot" onclick="doAddBot()">+ Add Bot</button>
     </div>
+    <div id="difficulty-controls" style="display:none; text-align:center; margin-top:8px;">
+      <span style="font-size:12px;color:#8aad8a;letter-spacing:1px;">BOT DIFFICULTY: </span>
+      <button class="btn-bot" id="diff-easy"   onclick="setDifficulty('easy')">Easy</button>
+      <button class="btn-bot" id="diff-medium" onclick="setDifficulty('medium')" style="background:var(--gold-dark);color:#1a1a1a">Medium</button>
+      <button class="btn-bot" id="diff-hard"   onclick="setDifficulty('hard')">Hard</button>
+    </div>
     <div class="wait-msg" id="lobby-wait">Waiting for players...</div>
     <div style="text-align:center;margin-top:16px">
       <button class="btn" id="btn-start" onclick="doStart()" style="display:none">START GAME</button>
@@ -663,6 +669,7 @@ function doStart() { socket.emit('start_game', { code: roomCode }); }
 function doLeave() { clearSession(); location.reload(); }
 function doAddBot() { socket.emit('add_bot', { code: roomCode }); }
 function doRemoveBot() { socket.emit('remove_bot', { code: roomCode }); }
+function setDifficulty(d) { socket.emit('set_difficulty', { code: roomCode, difficulty: d }); }
 function quickJoin(code) { $('inp-code').value = code; doJoin(); }
 
 function renderLobby() {
@@ -685,11 +692,22 @@ function renderLobby() {
 
   // bot controls (host only)
   const botControls = $('bot-controls');
+  const diffControls = $('difficulty-controls');
   botControls.style.display = isHost ? 'flex' : 'none';
   if (isHost) {
     $('btn-add-bot').disabled = view.players.length >= 5;
     $('btn-remove-bot').disabled = botCount === 0;
     $('bot-count-lbl').textContent = `${botCount} bot${botCount !== 1 ? 's' : ''}`;
+    // show difficulty selector only when there are bots
+    diffControls.style.display = botCount > 0 ? 'block' : 'none';
+    const diff = view.botDifficulty || 'medium';
+    ['easy','medium','hard'].forEach(d => {
+      const btn = $('diff-' + d);
+      if (btn) btn.style.background = d === diff ? 'var(--gold-dark)' : '';
+      if (btn) btn.style.color = d === diff ? '#1a1a1a' : '';
+    });
+  } else {
+    diffControls.style.display = 'none';
   }
 
   $('btn-start').style.display = isHost && view.players.length >= 2 ? 'inline-block' : 'none';

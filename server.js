@@ -17,6 +17,12 @@ const RANK_VAL = {2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9,10:10,J:11,Q:12,K:13,A:14};
 const ROUND_SEQUENCE = [5,6,7,8,9,10,10,9,8,7,6,5];
 const BOT_NAMES = ['Ace','Blackwood','Cutthroat','Duchess','Eddie'];
 const BOT_THINK_MS = 900;
+
+const BOT_DIFFICULTY = {
+  easy:   { sims: 0,   bidVariance: 1.5, playSmart: false },
+  medium: { sims: 100, bidVariance: 0.5, playSmart: true  },
+  hard:   { sims: 300, bidVariance: 0.1, playSmart: true  },
+};
 const MAX_ROOMS = 20;              // total open rooms allowed at once
 const MAX_ROOMS_PER_IP = 2;        // one person can't hog all slots
 const ROOM_IDLE_MS = 30 * 60 * 1000; // auto-delete rooms idle for 30 min
@@ -188,7 +194,7 @@ function runOneSimulation(allHands, trump, numPlayers, handSize) {
   return myTricks;
 }
 
-function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200) {
+function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200, bidVariance = 0.2) {
   // Build the unseen card pool: full deck minus my hand minus the shown trump card
   const mySet = new Set(hand.map(c => c.rank + c.suit));
   const trumpKey = trumpCard ? trumpCard.rank + trumpCard.suit : null;
@@ -219,20 +225,24 @@ function botBid(hand, trump, totalTricks, numPlayers, trumpCard, numSims = 200) 
   // If expected tricks are very low, consider a zero bid
   if (expected < 0.8 && Math.random() < 0.55) return 0;
 
-  // Round to nearest integer with tiny variance so AI isn't perfectly predictable
-  const bid = Math.round(expected + (Math.random() * 0.4 - 0.2));
+  // Apply variance — easy bots are noisier, hard bots are precise
+  const noise = (Math.random() * 2 - 1) * bidVariance;
+  const bid = Math.round(expected + noise);
   return Math.max(0, Math.min(bid, totalTricks));
 }
 
 // ── PLAY DECISIONS ───────────────────────────────────────
-function chooseBotCard(s, playerIdx) {
+function chooseBotCard(s, playerIdx, playSmart = true) {
   const hand = s.hands[playerIdx];
   const trick = s.currentTrick;
   const trump = s.trump;
   const bid = s.bids[playerIdx];
   const won = s.tricksWon[playerIdx];
   const played = playedSet(s);
+  // Easy bots: just play a random legal card
   const legal = getLegal(hand, trick);
+  if (!playSmart) return legal[Math.floor(Math.random() * legal.length)];
+
   const tricksLeft = s.totalTricks - s.trickCount;
   const stillNeed = bid - won;
   const isLast = trick.length === s.hands.length - 1; // we are last to play
@@ -346,6 +356,7 @@ function publicRoom(room) {
     code: room.code,
     phase: room.phase,
     host: room.host,
+    botDifficulty: room.botDifficulty || 'medium',
     players: room.players.map(p => ({
       id: p.id, name: p.name, score: p.score,
       roundScores: p.roundScores, connected: p.connected, isBot: p.isBot||false,
@@ -510,12 +521,14 @@ function scheduleBotsIfNeeded(room) {
     if (!player || !player.isBot) return;
 
     if (room.phase === 'bid') {
-      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, room.players.length, s.trumpCard);
+      const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
+      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, room.players.length, s.trumpCard, diff.sims, diff.bidVariance);
       recordBid(room, idx, bid);
       broadcastViews(room);
       scheduleBotsIfNeeded(room);
     } else if (room.phase === 'play') {
-      const card = chooseBotCard(s, idx);
+      const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
+      const card = chooseBotCard(s, idx, diff.playSmart);
       const result = recordPlay(room, idx, card);
       broadcastViews(room, result);
       if (result === 'round_over') {
@@ -578,6 +591,15 @@ io.on('connection', (socket) => {
     socket.emit('chat_history', room.chat || []);
     io.to(room.code).emit('room_update', publicRoom(room)); // updates all players including host
     broadcastRoomsList();
+  });
+
+  socket.on('set_difficulty', ({ code, difficulty }) => {
+    const room = getRoom(code);
+    if (!room || room.phase !== 'lobby') return;
+    if (room.host !== socket.id) return;
+    if (!BOT_DIFFICULTY[difficulty]) return;
+    room.botDifficulty = difficulty;
+    io.to(room.code).emit('room_update', publicRoom(room));
   });
 
   socket.on('add_bot', ({ code }) => {
