@@ -683,52 +683,91 @@ function scheduleBotsIfNeeded(room) {
 
   setTimeout(() => {
     if (!room.state) return;
-    const s = room.state;
-    const idx = s.currentTurnIdx;
-    const player = room.players[idx];
-    if (!player || !player.isBot) return;
-
-    if (room.phase === 'bid') {
-      const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
-      // Build opponent profiles in seat order starting from the player left of the bidder
-      const n = room.players.length;
-      const opponentProfiles = [];
-      for (let i = 1; i < n; i++) {
-        const oppIdx = (idx + i) % n;
-        opponentProfiles.push(playerToProfile(room.players[oppIdx], room.botDifficulty));
-      }
-      const bid = botBid(s.hands[idx], s.trump, s.totalTricks, n, s.trumpCard, diff.sims, diff.bidVariance, opponentProfiles);
-      recordBid(room, idx, bid);
-      broadcastViews(room);
-      scheduleBotsIfNeeded(room);
-    } else if (room.phase === 'play') {
-      const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
-      let card;
-      if (diff.master) {
-        card = chooseBotCardMaster(s, idx);
-      } else {
-        const smartCard = chooseBotCard(s, idx, diff.playSmart);
-        // apply play noise — occasionally make a random legal move
-        if (diff.playNoise > 0 && Math.random() < diff.playNoise) {
-          const legal = getLegal(s.hands[idx], s.currentTrick);
-          card = legal[Math.floor(Math.random() * legal.length)];
-        } else {
-          card = smartCard;
-        }
-      }
-      const result = recordPlay(room, idx, card);
-      broadcastViews(room, result);
-      if (result === 'round_over') {
-        // If that was the final round, end the game automatically after a short delay.
-        // Otherwise the host advances via the next_round event.
-        if (room.state.roundIdx >= (room.roundSeq||ROUND_SEQUENCE).length) setTimeout(() => maybeEndGame(room), 2500);
-      } else if (result === 'trick_over') {
-        setTimeout(() => scheduleBotsIfNeeded(room), BOT_THINK_MS);
-      } else {
-        scheduleBotsIfNeeded(room);
+    try {
+      runBotTurn(room);
+    } catch (err) {
+      console.error(`Bot turn error in room ${room.code}:`, err);
+      // Never freeze: fall back to a safe legal move so the game keeps going.
+      try {
+        runBotFallback(room);
+      } catch (err2) {
+        console.error(`Bot fallback also failed in room ${room.code}:`, err2);
+        const s2 = room.state;
+        io.to(room.code).emit('game_error', {
+          code: `BOT-${room.code}-R${s2 ? s2.roundIdx : '?'}-P${s2 ? s2.currentTurnIdx : '?'}`,
+          msg: 'A computer player hit an error. Tap Resync to recover.',
+        });
       }
     }
   }, BOT_THINK_MS);
+}
+
+// The normal bot move (may throw if AI logic hits a bad state).
+function runBotTurn(room) {
+  const s = room.state;
+  const idx = s.currentTurnIdx;
+  const player = room.players[idx];
+  if (!player || !player.isBot) return;
+
+  if (room.phase === 'bid') {
+    const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
+    const n = room.players.length;
+    const opponentProfiles = [];
+    for (let i = 1; i < n; i++) {
+      const oppIdx = (idx + i) % n;
+      opponentProfiles.push(playerToProfile(room.players[oppIdx], room.botDifficulty));
+    }
+    const bid = botBid(s.hands[idx], s.trump, s.totalTricks, n, s.trumpCard, diff.sims, diff.bidVariance, opponentProfiles);
+    recordBid(room, idx, bid);
+    broadcastViews(room);
+    scheduleBotsIfNeeded(room);
+  } else if (room.phase === 'play') {
+    const diff = BOT_DIFFICULTY[room.botDifficulty || 'medium'];
+    let card;
+    if (diff.master) {
+      card = chooseBotCardMaster(s, idx);
+    } else {
+      const smartCard = chooseBotCard(s, idx, diff.playSmart);
+      if (diff.playNoise > 0 && Math.random() < diff.playNoise) {
+        const legal = getLegal(s.hands[idx], s.currentTrick);
+        card = legal[Math.floor(Math.random() * legal.length)];
+      } else {
+        card = smartCard;
+      }
+    }
+    finishBotPlay(room, idx, card);
+  }
+}
+
+// Safe fallback: a guaranteed-legal move, used if the normal AI throws.
+function runBotFallback(room) {
+  const s = room.state;
+  const idx = s.currentTurnIdx;
+  const player = room.players[idx];
+  if (!player || !player.isBot) return;
+
+  if (room.phase === 'bid') {
+    recordBid(room, idx, 0);
+    broadcastViews(room);
+    scheduleBotsIfNeeded(room);
+  } else if (room.phase === 'play') {
+    const legal = getLegal(s.hands[idx], s.currentTrick);
+    if (!legal.length) return;
+    finishBotPlay(room, idx, legal[Math.floor(Math.random() * legal.length)]);
+  }
+}
+
+// Shared play-resolution used by both the normal turn and the fallback.
+function finishBotPlay(room, idx, card) {
+  const result = recordPlay(room, idx, card);
+  broadcastViews(room, result);
+  if (result === 'round_over') {
+    if (room.state.roundIdx >= (room.roundSeq||ROUND_SEQUENCE).length) setTimeout(() => maybeEndGame(room), 2500);
+  } else if (result === 'trick_over') {
+    setTimeout(() => scheduleBotsIfNeeded(room), BOT_THINK_MS);
+  } else {
+    scheduleBotsIfNeeded(room);
+  }
 }
 
 // ── SOCKET HANDLERS ──────────────────────────────────────
@@ -870,6 +909,16 @@ io.on('connection', (socket) => {
     else io.to(room.code).emit('game_over', { players: room.players });
   });
 
+  // Client-requested recovery: re-send state and restart the bot chain if it broke.
+  socket.on('resync', ({ code }) => {
+    const room = getRoom(code);
+    if (!room) { socket.emit('error', 'Room no longer exists.'); return; }
+    touch(room);
+    room.freezeRecoveries = 0;
+    broadcastViews(room);
+    try { scheduleBotsIfNeeded(room); } catch (e) { console.error('Resync re-kick failed:', e); }
+  });
+
   socket.on('get_rooms', () => {
     socket.emit('rooms_list', openRoomsList());
   });
@@ -941,6 +990,8 @@ io.on('connection', (socket) => {
 });
 
 function broadcastViews(room, result) {
+  if (room.state) room.state.lastProgress = Date.now(); // for the freeze watchdog
+  room.freezeRecoveries = 0;                            // healthy progress resets recovery count
   for (const p of room.players) {
     if (p.isBot) continue;
     const view = playerView(room, p.id);
@@ -965,6 +1016,50 @@ setInterval(() => {
   }
   broadcastRoomsList();
 }, 5 * 60 * 1000); // check every 5 minutes
+
+// ── FREEZE WATCHDOG ──────────────────────────────────────
+// If it's a computer player's turn and nothing has progressed for a while,
+// the bot chain probably broke. Re-kick it; if it stays stuck, alert clients.
+const FREEZE_MS = 8000;
+
+function botTurnPending(room) {
+  const s = room.state;
+  if (!s) return false;
+  if (room.phase === 'bid') {
+    const p = room.players[s.currentTurnIdx];
+    return !!(p && p.isBot);
+  }
+  if (room.phase === 'play') {
+    if (s.trickCount >= s.totalTricks) return false; // round over, waiting on host — not a freeze
+    const p = room.players[s.currentTurnIdx];
+    return !!(p && p.isBot);
+  }
+  return false;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const code of Object.keys(rooms)) {
+    const room = rooms[code];
+    if (!botTurnPending(room)) continue;
+    const since = now - (room.state.lastProgress || 0);
+    if (since <= FREEZE_MS) continue;
+
+    room.freezeRecoveries = (room.freezeRecoveries || 0) + 1;
+    room.state.lastProgress = now; // avoid re-firing every tick
+    console.warn(`Watchdog: room ${code} stuck ${since}ms on bot turn (recovery #${room.freezeRecoveries})`);
+
+    if (room.freezeRecoveries <= 3) {
+      try { scheduleBotsIfNeeded(room); }
+      catch (e) { console.error('Watchdog re-kick failed:', e); }
+    } else {
+      io.to(code).emit('game_error', {
+        code: `FROZEN-${code}-R${room.state.roundIdx}-P${room.state.currentTurnIdx}`,
+        msg: 'The game is stuck on a computer player. Tap Resync to recover.',
+      });
+    }
+  }
+}, 3000); // check every 3 seconds
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => console.log(`Five to Ten server on port ${PORT}`));

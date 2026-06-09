@@ -208,6 +208,12 @@
   /* TRICK FLASH */
   #trick-flash { position: fixed; top: 78%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.55); border: 2px solid var(--gold); border-radius: 10px; padding: 10px 22px; font-size: 17px; color: var(--gold); z-index: 200; display: none; pointer-events: none; text-align: center; }
 
+  /* STUCK / FREEZE BANNER */
+  #stuck-banner { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(40,0,0,0.95); border: 2px solid #e74c3c; border-radius: 12px; padding: 20px 24px; z-index: 400; display: none; text-align: center; max-width: 90%; box-shadow: 0 12px 40px rgba(0,0,0,0.8); }
+  #stuck-banner h3 { color: #e74c3c; font-size: 18px; margin-bottom: 8px; letter-spacing: 1px; }
+  #stuck-banner p { color: #f0e6c8; font-size: 13px; margin-bottom: 6px; }
+  #stuck-code { font-family: monospace; font-size: 12px; color: #ffb3a7; background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 5px; display: inline-block; margin-bottom: 14px; user-select: all; }
+
   /* GAME OVER */
   #screen-gameover { background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%); }
   .go-box { background: rgba(0,0,0,0.4); border: 2px solid var(--gold); border-radius: 14px; padding: 36px; text-align: center; max-width: 480px; width: 95%; }
@@ -414,6 +420,13 @@
 
 <!-- TRICK FLASH -->
 <div id="trick-flash"></div>
+<div id="stuck-banner">
+  <h3>⚠ GAME MAY BE STUCK</h3>
+  <p id="stuck-msg">No response from the other players for a while.</p>
+  <div id="stuck-code">—</div><br>
+  <button class="btn" onclick="doResync()">RESYNC</button>
+  <button class="btn btn-sec btn-sm" onclick="hideStuck()">DISMISS</button>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -544,6 +557,8 @@ socket.on('rooms_list', (list) => {
 
 socket.on('game_update', async (v) => {
   const seq = ++updateSeq;
+  lastUpdateTs = Date.now();   // freeze watchdog: progress observed
+  hideStuck();
 
   if ((v.lastResult === 'trick_over' || v.lastResult === 'round_over') && v.state?.lastTrick?.length) {
     // pin all cards on the table so everyone can see the final card
@@ -675,6 +690,41 @@ socket.on('game_over', ({ players }) => {
   sorted.forEach((p,i) => tbl.innerHTML += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td></tr>`);
   showScreen('gameover');
 });
+
+// ── FREEZE DETECTION ─────────────────────────────────────
+let lastUpdateTs = Date.now();
+
+function showStuck(code, msg) {
+  $('stuck-code').textContent = code || 'UNKNOWN';
+  if (msg) $('stuck-msg').textContent = msg;
+  $('stuck-banner').style.display = 'block';
+}
+function hideStuck() { $('stuck-banner').style.display = 'none'; }
+function doResync() {
+  hideStuck();
+  toast('Resyncing…', 1500);
+  socket.emit('resync', { code: roomCode });
+}
+
+// Server told us it detected a freeze it couldn't auto-recover.
+socket.on('game_error', ({ code, msg }) => {
+  showStuck(code, msg);
+});
+
+// Client-side watchdog: if we're waiting on someone else and no update arrives, warn.
+setInterval(() => {
+  if (!view || !view.state) return;
+  if (!$('screen-game').classList.contains('active')) return; // not in a live game
+  if (view.phase !== 'bid' && view.phase !== 'play') return;
+  // it's our turn → we're the holdup, not a freeze
+  if (view.state.currentTurnIdx === view.myIdx) { hideStuck(); return; }
+  // a round-result panel is open (waiting on host) → not a freeze
+  if ($('score-panel').classList.contains('on')) return;
+  if (Date.now() - lastUpdateTs > 12000) {
+    showStuck(`WAIT-${roomCode}-R${view.state.roundIdx}-P${view.state.currentTurnIdx}`,
+              'No response from the other players for a while.');
+  }
+}, 3000);
 
 socket.on('error', (msg) => {
   toast(msg, 3500);
