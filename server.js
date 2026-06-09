@@ -660,6 +660,16 @@ function startNextRound(room) {
   return true;
 }
 
+// If the final round just ended, end the game directly (no host action needed).
+function maybeEndGame(room) {
+  if (room.state && room.state.roundIdx >= ROUND_SEQUENCE.length) {
+    room.phase = 'gameover';
+    io.to(room.code).emit('game_over', { players: room.players });
+    return true;
+  }
+  return false;
+}
+
 // ── BOT TURN RUNNER ──────────────────────────────────────
 function scheduleBotsIfNeeded(room) {
   const s = room.state;
@@ -705,13 +715,9 @@ function scheduleBotsIfNeeded(room) {
       const result = recordPlay(room, idx, card);
       broadcastViews(room, result);
       if (result === 'round_over') {
-        // wait for host to advance (or auto-advance after delay)
-        setTimeout(() => {
-          if (!room.state) return;
-          const allBots = room.players.every(p => p.isBot);
-          // auto-advance only if all human players are gone or after delay
-          // Let host handle it via next_round event normally
-        }, 2000);
+        // If that was the final round, end the game automatically after a short delay.
+        // Otherwise the host advances via the next_round event.
+        if (room.state.roundIdx >= ROUND_SEQUENCE.length) setTimeout(() => maybeEndGame(room), 2500);
       } else if (result === 'trick_over') {
         setTimeout(() => scheduleBotsIfNeeded(room), BOT_THINK_MS);
       } else {
@@ -843,7 +849,12 @@ io.on('connection', (socket) => {
     }
     const result = recordPlay(room, playerIdx, card);
     broadcastViews(room, result);
-    if (result !== 'round_over') scheduleBotsIfNeeded(room);
+    if (result === 'round_over') {
+      // brief delay so clients can show the round result before the game-over screen
+      if (room.state.roundIdx >= ROUND_SEQUENCE.length) setTimeout(() => maybeEndGame(room), 2500);
+    } else {
+      scheduleBotsIfNeeded(room);
+    }
   });
 
   socket.on('next_round', ({ code }) => {
