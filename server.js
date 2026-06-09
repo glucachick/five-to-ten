@@ -503,6 +503,7 @@ function publicRoom(room) {
       id: p.id, name: p.name, score: p.score,
       roundScores: p.roundScores, connected: p.connected, isBot: p.isBot||false,
     })),
+    roundTotal: (room.roundSeq || ROUND_SEQUENCE).length,
     state: room.state ? {
       roundIdx: room.state.roundIdx,
       totalTricks: room.state.totalTricks,
@@ -552,7 +553,8 @@ function broadcastRoomsList() {
 // ── GAME LOGIC ───────────────────────────────────────────
 function dealRound(room) {
   const n = room.players.length;
-  const cards = ROUND_SEQUENCE[room.state.roundIdx];
+  const seq = room.roundSeq || ROUND_SEQUENCE;
+  const cards = seq[room.state.roundIdx];
   const deck = makeDeck();
   const hands = [];
   for (let i = 0; i < n; i++) hands.push(deck.splice(0, cards));
@@ -655,14 +657,16 @@ function scoreRound(room) {
 }
 
 function startNextRound(room) {
-  if (room.state.roundIdx >= ROUND_SEQUENCE.length) { room.phase = 'gameover'; return false; }
+  const seq = room.roundSeq || ROUND_SEQUENCE;
+  if (room.state.roundIdx >= seq.length) { room.phase = 'gameover'; return false; }
   dealRound(room);
   return true;
 }
 
 // If the final round just ended, end the game directly (no host action needed).
 function maybeEndGame(room) {
-  if (room.state && room.state.roundIdx >= ROUND_SEQUENCE.length) {
+  const seq = room.roundSeq || ROUND_SEQUENCE;
+  if (room.state && room.state.roundIdx >= seq.length) {
     room.phase = 'gameover';
     io.to(room.code).emit('game_over', { players: room.players });
     return true;
@@ -717,7 +721,7 @@ function scheduleBotsIfNeeded(room) {
       if (result === 'round_over') {
         // If that was the final round, end the game automatically after a short delay.
         // Otherwise the host advances via the next_round event.
-        if (room.state.roundIdx >= ROUND_SEQUENCE.length) setTimeout(() => maybeEndGame(room), 2500);
+        if (room.state.roundIdx >= (room.roundSeq||ROUND_SEQUENCE).length) setTimeout(() => maybeEndGame(room), 2500);
       } else if (result === 'trick_over') {
         setTimeout(() => scheduleBotsIfNeeded(room), BOT_THINK_MS);
       } else {
@@ -732,7 +736,7 @@ io.on('connection', (socket) => {
 
   socket.emit('rooms_list', openRoomsList());
 
-  socket.on('create_room', ({ name }) => {
+  socket.on('create_room', ({ name, quick }) => {
     // global room cap
     const openRooms = Object.values(rooms).filter(r => r.phase === 'lobby');
     if (openRooms.length >= MAX_ROOMS) {
@@ -749,6 +753,7 @@ io.on('connection', (socket) => {
       code, host: socket.id, phase: 'lobby', creatorIP: ip, lastActivity: Date.now(),
       players: [{ id: socket.id, name, score: 0, roundScores: [], connected: true, isBot: false }],
       state: null,
+      roundSeq: quick ? [2, 2] : ROUND_SEQUENCE,   // quick test = 2 short rounds
     };
     socket.join(code);
     socket.emit('room_joined', { code, view: playerView(rooms[code], socket.id) });
@@ -851,7 +856,7 @@ io.on('connection', (socket) => {
     broadcastViews(room, result);
     if (result === 'round_over') {
       // brief delay so clients can show the round result before the game-over screen
-      if (room.state.roundIdx >= ROUND_SEQUENCE.length) setTimeout(() => maybeEndGame(room), 2500);
+      if (room.state.roundIdx >= (room.roundSeq||ROUND_SEQUENCE).length) setTimeout(() => maybeEndGame(room), 2500);
     } else {
       scheduleBotsIfNeeded(room);
     }

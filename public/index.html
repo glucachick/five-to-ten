@@ -266,6 +266,9 @@
     <div style="text-align:center">
       <button class="btn" onclick="doCreate()">CREATE ROOM</button>
   <button class="btn btn-sec" id="btn-rejoin" onclick="doRejoin()" style="display:none">REJOIN LAST GAME</button>
+      <label style="display:block;margin-top:8px;font-size:12px;color:#8aad8a;cursor:pointer">
+        <input type="checkbox" id="inp-quick"> Quick test game (2 short rounds)
+      </label>
     </div>
     <div class="divider">— or join an existing room —</div>
     <div class="form-group">
@@ -690,7 +693,8 @@ socket.on('error', (msg) => {
 function doCreate() {
   myName = $('inp-name').value.trim();
   if (!myName) { $('title-err').textContent = 'Enter your name.'; return; }
-  socket.emit('create_room', { name: myName });
+  const quick = $('inp-quick') && $('inp-quick').checked;
+  socket.emit('create_room', { name: myName, quick });
 }
 
 function doJoin() {
@@ -761,7 +765,7 @@ function renderGame() {
   showScreen('game');
 
   // top bar
-  $('round-info').textContent = `Round ${s.roundIdx+1} of ${ROUND_SEQ.length} — ${s.totalTricks} cards`;
+  $('round-info').textContent = `Round ${s.roundIdx+1} of ${view.roundTotal || ROUND_SEQ.length} — ${s.totalTricks} cards`;
   if (s.trumpCard) {
     const tc = s.trumpCard;
     const mini = $('trump-mini');
@@ -1087,7 +1091,7 @@ function showScores() {
 
 function showRoundScores() {
   const s = view.state;
-  const isLast = s.roundIdx >= ROUND_SEQ.length;
+  const isLast = s.roundIdx >= (view.roundTotal || ROUND_SEQ.length);
   $('score-title').textContent = isLast ? 'FINAL SCORES' : `ROUND ${s.roundIdx} RESULTS`;
   buildScoreTable();
   const actions = $('score-actions');
