@@ -266,9 +266,6 @@
     <div style="text-align:center">
       <button class="btn" onclick="doCreate()">CREATE ROOM</button>
   <button class="btn btn-sec" id="btn-rejoin" onclick="doRejoin()" style="display:none">REJOIN LAST GAME</button>
-      <label style="display:block;margin-top:8px;font-size:12px;color:#8aad8a;cursor:pointer">
-        <input type="checkbox" id="inp-quick"> Quick test game (2 short rounds)
-      </label>
     </div>
     <div class="divider">— or join an existing room —</div>
     <div class="form-group">
@@ -693,8 +690,7 @@ socket.on('error', (msg) => {
 function doCreate() {
   myName = $('inp-name').value.trim();
   if (!myName) { $('title-err').textContent = 'Enter your name.'; return; }
-  const quick = $('inp-quick') && $('inp-quick').checked;
-  socket.emit('create_room', { name: myName, quick });
+  socket.emit('create_room', { name: myName });
 }
 
 function doJoin() {

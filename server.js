@@ -736,7 +736,7 @@ io.on('connection', (socket) => {
 
   socket.emit('rooms_list', openRoomsList());
 
-  socket.on('create_room', ({ name, quick }) => {
+  socket.on('create_room', ({ name }) => {
     // global room cap
     const openRooms = Object.values(rooms).filter(r => r.phase === 'lobby');
     if (openRooms.length >= MAX_ROOMS) {
@@ -753,7 +753,7 @@ io.on('connection', (socket) => {
       code, host: socket.id, phase: 'lobby', creatorIP: ip, lastActivity: Date.now(),
       players: [{ id: socket.id, name, score: 0, roundScores: [], connected: true, isBot: false }],
       state: null,
-      roundSeq: quick ? [2, 2] : ROUND_SEQUENCE,   // quick test = 2 short rounds
+      roundSeq: ROUND_SEQUENCE,
     };
     socket.join(code);
     socket.emit('room_joined', { code, view: playerView(rooms[code], socket.id) });
