@@ -647,7 +647,11 @@ function scoreRound(room) {
     const bid = s.bids[i], won = s.tricksWon[i];
     let delta = 0;
     if (bid === 0) { delta = won === 0 ? 25 : -25; }
-    else if (won >= bid) { delta = bid * 10 + (won - bid); }
+    else if (won >= bid) {
+      delta = bid * 10 + (won - bid);
+      // Shoot-the-moon: bid ALL the tricks and take them all → +50 bonus
+      if (bid === s.totalTricks && won === s.totalTricks) delta += 50;
+    }
     else { delta = -(bid * 10); }
     room.players[i].score += delta;
     room.players[i].roundScores.push({ round: s.roundIdx + 1, bid, won, delta });
