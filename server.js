@@ -647,7 +647,7 @@ function scoreRound(room) {
     const bid = s.bids[i], won = s.tricksWon[i];
     let delta = 0;
     if (bid === 0) { delta = won === 0 ? 25 : -25; }
-    else if (won >= bid) { delta = bid * 10 + (won - bid); if (won === s.totalTricks) delta += 50; }
+    else if (won >= bid) { delta = bid * 10 + (won - bid); }
     else { delta = -(bid * 10); }
     room.players[i].score += delta;
     room.players[i].roundScores.push({ round: s.roundIdx + 1, bid, won, delta });
